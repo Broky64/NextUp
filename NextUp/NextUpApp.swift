@@ -1,17 +1,13 @@
-//
-//  NextUpApp.swift
-//  NextUp
-//
-//  Created by Paul Brocvielle on 28/02/2026.
-//
-
 import SwiftUI
 
 @main
 struct NextUpApp: App {
     var body: some Scene {
-        WindowGroup {
+        // MenuBarExtra crée l'icône dans la barre des menus
+        MenuBarExtra("NextUp", systemImage: "calendar.badge.clock") {
             ContentView()
         }
+        // Le style .window permet d'afficher une belle vue SwiftUI (popover) au clic
+        .menuBarExtraStyle(.window)
     }
 }

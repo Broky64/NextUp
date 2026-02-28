@@ -5,8 +5,8 @@ import Combine
 class EventManager: ObservableObject {
     private let store = EKEventStore()
     
-    // On passe d'un seul événement à un tableau d'événements
-    @Published var upcomingEvents: [EKEvent] = []
+    // Le tableau contient maintenant tous les événements du jour
+    @Published var todaysEvents: [EKEvent] = []
     @Published var accessGranted = false
     
     init() {
@@ -18,36 +18,40 @@ class EventManager: ObservableObject {
             store.requestFullAccessToEvents { [weak self] granted, error in
                 DispatchQueue.main.async {
                     self?.accessGranted = granted
-                    if granted { self?.fetchUpcomingEvents() }
+                    if granted { self?.fetchTodaysEvents() }
                 }
             }
         } else {
             store.requestAccess(to: .event) { [weak self] granted, error in
                 DispatchQueue.main.async {
                     self?.accessGranted = granted
-                    if granted { self?.fetchUpcomingEvents() }
+                    if granted { self?.fetchTodaysEvents() }
                 }
             }
         }
     }
     
-    func fetchUpcomingEvents() {
-        let calendars = store.calendars(for: .event)
-        let now = Date()
-        
-        // On cherche jusqu'à la fin de la journée actuelle (23:59)
-        let calendar = Calendar.current
-        guard let endOfDay = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: now) else { return }
-        
-        let predicate = store.predicateForEvents(withStart: now, end: endOfDay, calendars: calendars)
-        let events = store.events(matching: predicate)
-        
-        DispatchQueue.main.async {
-            // On filtre, on trie, et on garde les 6 prochains événements maximum
-            self.upcomingEvents = events
-                .filter { !$0.isAllDay && $0.startDate > now }
-                .sorted { $0.startDate < $1.startDate }
-                .prefix(6).map { $0 }
-        }
-    }
+    func fetchTodaysEvents() {
+            let calendars = store.calendars(for: .event)
+            let now = Date()
+            let calendar = Calendar.current
+            
+            let startOfDay = calendar.startOfDay(for: now)
+            guard let endOfDay = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: now) else { return }
+            
+            let predicate = store.predicateForEvents(withStart: startOfDay, end: endOfDay, calendars: calendars)
+            let events = store.events(matching: predicate)
+            
+            DispatchQueue.main.async {
+                // J'ai retiré le filtre .filter { !$0.isAllDay }
+                // Tous les événements (y compris all-day) sont maintenant affichés !
+                self.todaysEvents = events
+                    .sorted {
+                        // On met les événements "All Day" tout en haut de la liste
+                        if $0.isAllDay && !$1.isAllDay { return true }
+                        if !$0.isAllDay && $1.isAllDay { return false }
+                        return $0.startDate < $1.startDate
+                    }
+            }
+        }   
 }

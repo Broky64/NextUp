@@ -5,26 +5,24 @@ import Combine
 struct ContentView: View {
     @StateObject private var eventManager = EventManager()
     
-    // Timer léger (60 sec)
     let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     
     var body: some View {
         VStack(spacing: 0) {
             
-            // 1. EVENT LIST AREA
             if !eventManager.accessGranted {
                 Text("Calendar access required in System Settings.")
                     .font(.system(.footnote, design: .rounded))
                     .foregroundColor(.secondary)
                     .padding()
                     .multilineTextAlignment(.center)
-            } else if !eventManager.upcomingEvents.isEmpty {
+            } else if !eventManager.todaysEvents.isEmpty {
                 
-                // En-tête de la liste
+                // HEADER
                 HStack(spacing: 4) {
                     Image(systemName: "calendar")
                         .foregroundColor(.secondary)
-                    Text("UPCOMING TODAY")
+                    Text("TODAY")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundColor(.secondary)
                     Spacer()
@@ -33,40 +31,57 @@ struct ContentView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 4)
                 
-                // Liste compacte des événements
-                VStack(spacing: 2) {
-                    ForEach(eventManager.upcomingEvents, id: \.eventIdentifier) { event in
-                        HStack(alignment: .center, spacing: 8) {
-                            // Petit point avec la couleur native du calendrier
-                            Circle()
-                                .fill(Color(nsColor: event.calendar.color))
-                                .frame(width: 8, height: 8)
+                // LISTE DES ÉVÉNEMENTS
+                ScrollView {
+                    VStack(spacing: 2) {
+                        ForEach(eventManager.todaysEvents, id: \.eventIdentifier) { event in
                             
-                            Text(event.title)
-                                .font(.system(size: 13, weight: .medium, design: .rounded))
-                                .lineLimit(1)
+                            // On ne grise pas les all-day tant que la journée n'est pas finie
+                            let isPast = !event.isAllDay && event.endDate < Date()
                             
-                            Spacer()
-                            
-                            Text(event.startDate, style: .time)
-                                .font(.system(size: 12, weight: .regular, design: .rounded))
-                                .foregroundColor(.secondary)
+                            HStack(alignment: .center, spacing: 8) {
+                                Circle()
+                                    .fill(Color(nsColor: event.calendar.color))
+                                    .frame(width: 8, height: 8)
+                                    .opacity(isPast ? 0.3 : 1.0)
+                                
+                                Text(event.title)
+                                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                                    .lineLimit(1)
+                                    .foregroundColor(isPast ? .secondary : .primary)
+                                
+                                Spacer()
+                                
+                                // GESTION DU TEXTE "ALL DAY" ou de l'heure
+                                if event.isAllDay {
+                                    Text("All Day")
+                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                        .foregroundColor(.secondary)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.secondary.opacity(0.15))
+                                        .cornerRadius(4)
+                                } else {
+                                    Text(event.startDate, style: .time)
+                                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                                        .foregroundColor(.secondary)
+                                        .opacity(isPast ? 0.5 : 1.0)
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        // Effet de survol pour chaque ligne
-                        .background(Color.secondary.opacity(0.0))
                     }
+                    .padding(.bottom, 6)
                 }
-                .padding(.bottom, 6)
+                .frame(maxHeight: 300)
                 
             } else {
-                // Design quand la journée est finie
                 VStack(spacing: 8) {
-                    Image(systemName: "moon.zzz.fill")
+                    Image(systemName: "cup.and.saucer.fill")
                         .font(.system(size: 24))
-                        .foregroundColor(.indigo)
-                    Text("Done for the day")
+                        .foregroundColor(.orange)
+                    Text("No events today")
                         .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundColor(.secondary)
                 }
@@ -76,7 +91,7 @@ struct ContentView: View {
             Divider()
                 .padding(.bottom, 6)
             
-            // 2. BOTTOM MENU (SETTINGS & QUIT)
+            // BOTTOM MENU
             HStack(spacing: 12) {
                 Spacer()
                 
@@ -111,10 +126,10 @@ struct ContentView: View {
         }
         .frame(width: 260)
         .onReceive(timer) { _ in
-            eventManager.fetchUpcomingEvents()
+            eventManager.fetchTodaysEvents()
         }
         .onAppear {
-            eventManager.fetchUpcomingEvents()
+            eventManager.fetchTodaysEvents()
         }
     }
 }

@@ -5,91 +5,101 @@ import Combine
 struct ContentView: View {
     @StateObject private var eventManager = EventManager()
     
-    // Lightweight timer ticking every 60 seconds
+    // Timer léger (60 sec)
     let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     
     var body: some View {
         VStack(spacing: 0) {
             
-            // 1. EVENT AREA
+            // 1. EVENT LIST AREA
             if !eventManager.accessGranted {
                 Text("Calendar access required in System Settings.")
                     .font(.system(.footnote, design: .rounded))
                     .foregroundColor(.secondary)
                     .padding()
                     .multilineTextAlignment(.center)
-            } else if let event = eventManager.nextEvent {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "calendar.badge.clock")
-                            .foregroundColor(.blue)
-                        Text("NEXT UP")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Text(event.title)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .lineLimit(1)
-                    
-                    HStack {
-                        Image(systemName: "clock")
-                            .font(.system(size: 12))
-                        Text(event.startDate, style: .time)
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                    }
-                    .foregroundColor(.blue)
+            } else if !eventManager.upcomingEvents.isEmpty {
+                
+                // En-tête de la liste
+                HStack(spacing: 4) {
+                    Image(systemName: "calendar")
+                        .foregroundColor(.secondary)
+                    Text("UPCOMING TODAY")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(.secondary)
+                    Spacer()
                 }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.secondary.opacity(0.1))
-                .cornerRadius(10)
-                .padding([.horizontal, .top], 12)
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+                .padding(.bottom, 4)
+                
+                // Liste compacte des événements
+                VStack(spacing: 2) {
+                    ForEach(eventManager.upcomingEvents, id: \.eventIdentifier) { event in
+                        HStack(alignment: .center, spacing: 8) {
+                            // Petit point avec la couleur native du calendrier
+                            Circle()
+                                .fill(Color(nsColor: event.calendar.color))
+                                .frame(width: 8, height: 8)
+                            
+                            Text(event.title)
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                                .lineLimit(1)
+                            
+                            Spacer()
+                            
+                            Text(event.startDate, style: .time)
+                                .font(.system(size: 12, weight: .regular, design: .rounded))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        // Effet de survol pour chaque ligne
+                        .background(Color.secondary.opacity(0.0))
+                    }
+                }
+                .padding(.bottom, 6)
                 
             } else {
-                // Design when the day is over
+                // Design quand la journée est finie
                 VStack(spacing: 8) {
                     Image(systemName: "moon.zzz.fill")
-                        .font(.largeTitle)
+                        .font(.system(size: 24))
                         .foregroundColor(.indigo)
                     Text("Done for the day")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundColor(.secondary)
                 }
-                .padding(.vertical, 20)
+                .padding(.vertical, 16)
             }
             
             Divider()
-                .padding(.top, 12)
-                .padding(.bottom, 8)
+                .padding(.bottom, 6)
             
             // 2. BOTTOM MENU (SETTINGS & QUIT)
             HStack(spacing: 12) {
                 Spacer()
                 
-                // Settings Button
                 Button {
-                    // Action for settings (to be implemented)
                     print("Open Settings")
                 } label: {
                     Image(systemName: "gearshape.fill")
-                        .font(.system(size: 13))
+                        .font(.system(size: 12))
                         .foregroundColor(.secondary)
-                        .padding(6)
+                        .padding(5)
                         .background(Color.secondary.opacity(0.1))
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .help("Settings")
                 
-                // Quit Button
                 Button {
                     NSApplication.shared.terminate(nil)
                 } label: {
                     Image(systemName: "power")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundColor(.secondary)
-                        .padding(6)
+                        .padding(5)
                         .background(Color.secondary.opacity(0.1))
                         .clipShape(Circle())
                 }
@@ -100,12 +110,11 @@ struct ContentView: View {
             .padding(.bottom, 8)
         }
         .frame(width: 260)
-        // 3. AUTO-REFRESH TRIGGERS
         .onReceive(timer) { _ in
-            eventManager.fetchNextEvent()
+            eventManager.fetchUpcomingEvents()
         }
         .onAppear {
-            eventManager.fetchNextEvent()
+            eventManager.fetchUpcomingEvents()
         }
     }
 }

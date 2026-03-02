@@ -1,0 +1,37 @@
+name: Publish Release
+
+on:
+  push:
+    tags:
+      - 'v*' # S'exécute UNIQUEMENT quand tu crées un tag commençant par "v" (ex: v1.0.0)
+
+jobs:
+  release:
+    name: Build and Publish Release
+    runs-on: macos-latest
+    permissions:
+      contents: write # Autorisation indispensable pour que GitHub Actions puisse créer la page de Release
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build App
+        run: |
+          xcodebuild \
+            -project NextUp.xcodeproj \
+            -scheme NextUp \
+            -configuration Release \
+            -derivedDataPath build \
+            clean build
+
+      - name: Package App
+        run: |
+          cd build/Build/Products/Release/
+          zip -ry NextUp.zip NextUp.app
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Build/Products/Release/NextUp.zip
+          generate_release_notes: true # GitHub va écrire tout seul ce qui a changé depuis la dernière version !

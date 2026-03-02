@@ -4,83 +4,161 @@ import ServiceManagement
 struct SettingsView: View {
     @AppStorage("showAllDayEvents") private var showAllDayEvents = true
     @AppStorage("showPastEvents") private var showPastEvents = true
-    @AppStorage("showRemainingTime") private var showRemainingTime = true
+    @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
     @AppStorage("fontSizeOffset") private var fontSizeOffset: Double = 0.0
     @AppStorage("daysInAdvance") private var daysInAdvance: Int = 3
     @AppStorage("remainingTimeColor") private var remainingTimeColor: String = "Orange"
     @AppStorage("menuBarDisplayMode") private var menuBarDisplayMode: MenuBarMode = .currentEvent
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-    
+
+    private var textSizeBinding: Binding<Int> {
+        Binding(
+            get: { Int(fontSizeOffset) + 12 },
+            set: { fontSizeOffset = Double($0 - 12) }
+        )
+    }
+
+    private var activeColor: Color {
+        switch remainingTimeColor {
+        case "Blue": return .blue
+        case "Red": return .red
+        case "Green": return .green
+        case "Purple": return .purple
+        case "Pink": return .pink
+        default: return .orange
+        }
+    }
+
     var body: some View {
         TabView {
-            Form {
-                Toggle("Launch at login", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) {
-                        do {
-                            if launchAtLogin {
-                                try SMAppService.mainApp.register()
-                            } else {
-                                try SMAppService.mainApp.unregister()
-                            }
-                        } catch {
-                            print("Failed to update Launch at login: \(error.localizedDescription)")
-                            launchAtLogin = SMAppService.mainApp.status == .enabled
+            ScrollView {
+                VStack(spacing: 14) {
+                    settingsCard("Menu Bar", systemImage: "menubar.rectangle") {
+                        Picker("Display", selection: $menuBarDisplayMode) {
+                            Text("Icon only").tag(MenuBarMode.none)
+                            Text("Current event").tag(MenuBarMode.currentEvent)
+                            Text("Upcoming event").tag(MenuBarMode.upcomingEvent)
+                        }
+                        .pickerStyle(.menu)
+                        .onChange(of: menuBarDisplayMode) {
+                            EventManager.shared.updateMenuBarTitle()
+                        }
+
+                        Toggle("Show icon with text", isOn: $showMenuBarIcon)
+                            .disabled(menuBarDisplayMode == .none)
+
+                        Text(
+                            menuBarDisplayMode == .none
+                                ? "Icon is always visible in Icon only mode."
+                                : "Turn this off for a cleaner text-only menu bar."
+                        )
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    }
+
+                    settingsCard("Timeline", systemImage: "calendar") {
+                        Toggle("Show all-day events", isOn: $showAllDayEvents)
+                        Toggle("Show past events", isOn: $showPastEvents)
+
+                        Picker("Look ahead", selection: $daysInAdvance) {
+                            Text("1 day").tag(1)
+                            Text("2 days").tag(2)
+                            Text("3 days").tag(3)
+                            Text("7 days").tag(7)
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: daysInAdvance) {
+                            EventManager.shared.fetchEvents()
                         }
                     }
-                    .onAppear {
-                        launchAtLogin = SMAppService.mainApp.status == .enabled
+
+                    settingsCard("Startup", systemImage: "power") {
+                        Toggle("Launch at login", isOn: $launchAtLogin)
+                            .onChange(of: launchAtLogin) {
+                                do {
+                                    if launchAtLogin {
+                                        try SMAppService.mainApp.register()
+                                    } else {
+                                        try SMAppService.mainApp.unregister()
+                                    }
+                                } catch {
+                                    print("Failed to update Launch at login: \(error.localizedDescription)")
+                                    launchAtLogin = SMAppService.mainApp.status == .enabled
+                                }
+                            }
+                            .onAppear {
+                                launchAtLogin = SMAppService.mainApp.status == .enabled
+                            }
                     }
-                
-                Toggle("Show All-Day Events", isOn: $showAllDayEvents)
-                Toggle("Show Past Events", isOn: $showPastEvents)
-                Toggle("Show Remaining Time", isOn: $showRemainingTime)
-                
-                Picker("Menu Bar Display", selection: $menuBarDisplayMode) {
-                    Text("None (Icon only)").tag(MenuBarMode.none)
-                    Text("Current Event (Time left)").tag(MenuBarMode.currentEvent)
-                    Text("Upcoming Event (Time until)").tag(MenuBarMode.upcomingEvent)
                 }
-                .onChange(of: menuBarDisplayMode) {
-                    EventManager.shared.updateMenuBarTitle()
-                }
-                
-                Picker("Show events for", selection: $daysInAdvance) {
-                    Text("Today only").tag(1)
-                    Text("Next 2 Days").tag(2)
-                    Text("Next 3 Days").tag(3)
-                    Text("Next 7 Days").tag(7)
-                }
-                .onChange(of: daysInAdvance) {
-                    EventManager.shared.fetchEvents()
-                }
+                .padding(16)
             }
-            .padding(20)
             .tabItem {
                 Label("General", systemImage: "gearshape")
             }
-            
-            Form {
-                Picker("Text Size", selection: $fontSizeOffset) {
-                    ForEach(8..<25) { size in
-                        Text("\(size) pt").tag(Double(size - 12))
+
+            ScrollView {
+                VStack(spacing: 14) {
+                    settingsCard("Typography", systemImage: "textformat.size") {
+                        HStack {
+                            Text("Text size")
+                            Spacer()
+                            Text("\(textSizeBinding.wrappedValue) pt")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+
+                        Stepper("Adjust size", value: textSizeBinding, in: 8...24)
+                    }
+
+                    settingsCard("Highlights", systemImage: "paintpalette") {
+                        Picker("Active time color", selection: $remainingTimeColor) {
+                            Text("Orange").tag("Orange")
+                            Text("Blue").tag("Blue")
+                            Text("Red").tag("Red")
+                            Text("Green").tag("Green")
+                            Text("Purple").tag("Purple")
+                            Text("Pink").tag("Pink")
+                        }
+
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(activeColor)
+                                .frame(width: 10, height: 10)
+                            Text("Preview for ongoing events")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
-                
-                Picker("Active Time Color", selection: $remainingTimeColor) {
-                    Text("Orange").tag("Orange")
-                    Text("Blue").tag("Blue")
-                    Text("Red").tag("Red")
-                    Text("Green").tag("Green")
-                    Text("Purple").tag("Purple")
-                    Text("Pink").tag("Pink")
-                }
+                .padding(16)
             }
-            .padding(20)
             .tabItem {
-                Label("Appearance", systemImage: "paintpalette")
+                Label("Appearance", systemImage: "slider.horizontal.3")
             }
         }
-        .frame(width: 400, height: 250)
+        .frame(width: 460, height: 420)
+    }
+
+    @ViewBuilder
+    private func settingsCard<Content: View>(
+        _ title: String,
+        systemImage: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+            }
+        }
     }
 }
 

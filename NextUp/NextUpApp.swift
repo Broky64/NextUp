@@ -3,24 +3,33 @@ import SwiftUI
 @main
 struct NextUpApp: App {
     @StateObject private var eventManager = EventManager.shared
+    @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
+    @AppStorage("menuBarDisplayMode") private var menuBarDisplayMode: MenuBarMode = .currentEvent
 
     var body: some Scene {
         MenuBarExtra {
             ContentView(eventManager: eventManager)
         } label: {
+            let hasTitle = !eventManager.menuBarTitle.isEmpty
+            let shouldShowIcon = menuBarDisplayMode == .none || !hasTitle || showMenuBarIcon
+
             Group {
-                if eventManager.menuBarTitle.isEmpty {
-                    Image(systemName: "calendar.badge.clock")
-                } else {
+                if hasTitle {
                     HStack(spacing: 4) {
-                        Image(systemName: "calendar.badge.clock")
+                        if shouldShowIcon {
+                            Image(systemName: "calendar.badge.clock")
+                        }
                         Text(eventManager.menuBarTitle)
                             .lineLimit(1)
                     }
                     .monospacedDigit()
+                } else if shouldShowIcon {
+                    Image(systemName: "calendar.badge.clock")
+                } else {
+                    Text(" ")
                 }
             }
-            .id(eventManager.menuBarTitle)
+            .id("\(eventManager.menuBarTitle)|\(menuBarDisplayMode.rawValue)|\(showMenuBarIcon)")
         }
         .menuBarExtraStyle(.window)
         

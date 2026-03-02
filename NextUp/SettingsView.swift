@@ -32,10 +32,9 @@ struct SettingsView: View {
             
             Form {
                 Picker("Text Size", selection: $fontSizeOffset) {
-                    Text("Small").tag(-2.0)
-                    Text("Normal").tag(0.0)
-                    Text("Large").tag(2.0)
-                    Text("Extra Large").tag(4.0)
+                    ForEach(8..<25) { size in
+                        Text("\(size) pt").tag(Double(size - 12))
+                    }
                 }
                 
                 Picker("Active Time Color", selection: $remainingTimeColor) {

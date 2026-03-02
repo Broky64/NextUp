@@ -1,0 +1,42 @@
+name: macOS App Build & Artifact
+
+on:
+  push:
+    branches:
+      - '**'  # Runs on all branches
+  pull_request:
+    branches:
+      - '**'  # Runs on pull requests
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  build:
+    name: Build and Package NextUp
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build App
+        run: |
+          xcodebuild \
+            -project NextUp.xcodeproj \
+            -scheme NextUp \
+            -configuration Release \
+            -derivedDataPath build \
+            clean build
+
+      - name: Package App
+        run: |
+          cd build/Build/Products/Release/
+          # Zipping only the .app directory recursively and preserving symlinks (-y), 
+          # which ensures no temporary build logs or unrelated files are included.
+          zip -ry NextUp-Alpha.zip NextUp.app
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NextUp-Build-Debug
+          path: build/Build/Products/Release/NextUp-Alpha.zip
+          retention-days: 7

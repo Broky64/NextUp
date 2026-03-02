@@ -8,7 +8,19 @@ struct NextUpApp: App {
         MenuBarExtra {
             ContentView(eventManager: eventManager)
         } label: {
-            Text(Image(systemName: "calendar.badge.clock")) + Text(eventManager.menuBarTitle.isEmpty ? "" : " \(eventManager.menuBarTitle)")
+            Group {
+                if eventManager.menuBarTitle.isEmpty {
+                    Image(systemName: "calendar.badge.clock")
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar.badge.clock")
+                        Text(eventManager.menuBarTitle)
+                            .lineLimit(1)
+                    }
+                    .monospacedDigit()
+                }
+            }
+            .id(eventManager.menuBarTitle)
         }
         .menuBarExtraStyle(.window)
         

@@ -41,6 +41,10 @@ class EventManager: ObservableObject {
                     if granted { 
                         self?.fetchEvents()
                         self?.startTimer()
+                    } else {
+                        self?.upcomingEvents = []
+                        self?.currentMinute = Date()
+                        self?.updateMenuBarTitle()
                     }
                 }
             }
@@ -51,6 +55,10 @@ class EventManager: ObservableObject {
                     if granted { 
                         self?.fetchEvents()
                         self?.startTimer()
+                    } else {
+                        self?.upcomingEvents = []
+                        self?.currentMinute = Date()
+                        self?.updateMenuBarTitle()
                     }
                 }
             }
@@ -90,6 +98,11 @@ class EventManager: ObservableObject {
             menuBarTitle = ""
             return
         }
+
+        guard accessGranted else {
+            menuBarTitle = "Grant Access"
+            return
+        }
         
         func formatTitle(_ title: String?) -> String {
             let text = title ?? "Event"
@@ -101,23 +114,41 @@ class EventManager: ObservableObject {
             let remainder = mins % 60
             return hours > 0 ? "\(hours)h \(remainder)m" : "\(mins)m"
         }
-        
-        if mode == .currentEvent {
-            let activeEvent = upcomingEvents.first { !$0.isAllDay && $0.startDate <= now && $0.endDate > now }
-            if let active = activeEvent {
-                let mins = max(0, Int(active.endDate.timeIntervalSince(now) / 60))
-                menuBarTitle = "\(formatTitle(active.title))... \(formatTime(mins)) left"
-                return
+
+        let activeEvent = upcomingEvents.first { !$0.isAllDay && $0.startDate <= now && $0.endDate > now }
+        let nextEvent = upcomingEvents.first { !$0.isAllDay && $0.startDate > now }
+
+        func activeText(for event: EKEvent) -> String {
+            let mins = max(0, Int(event.endDate.timeIntervalSince(now) / 60))
+            return "\(formatTitle(event.title)) \(formatTime(mins)) left"
+        }
+
+        func nextText(for event: EKEvent) -> String {
+            let mins = max(0, Int(event.startDate.timeIntervalSince(now) / 60))
+            return "\(formatTitle(event.title)) in \(formatTime(mins))"
+        }
+
+        switch mode {
+        case .none:
+            menuBarTitle = ""
+        case .currentEvent:
+            if let activeEvent {
+                menuBarTitle = activeText(for: activeEvent)
+            } else if let nextEvent {
+                // Fallback keeps title dynamic even when nothing is currently running.
+                menuBarTitle = nextText(for: nextEvent)
+            } else {
+                menuBarTitle = ""
             }
-        } else if mode == .upcomingEvent {
-            let veryNext = upcomingEvents.first { !$0.isAllDay && $0.startDate > now }
-            if let next = veryNext {
-                let diff = max(0, Int(next.startDate.timeIntervalSince(now) / 60))
-                menuBarTitle = "\(formatTitle(next.title))... in \(formatTime(diff))"
-                return
+        case .upcomingEvent:
+            if let nextEvent {
+                menuBarTitle = nextText(for: nextEvent)
+            } else if let activeEvent {
+                // Fallback avoids showing only the icon when no future event exists.
+                menuBarTitle = activeText(for: activeEvent)
+            } else {
+                menuBarTitle = ""
             }
         }
-        
-        menuBarTitle = ""
     }
 }

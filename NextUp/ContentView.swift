@@ -182,9 +182,12 @@ struct EventRowView: View {
                 let m = diff % 60
                 let timeValue = h > 0 ? "\(h)h \(m)m" : "\(m) min"
                 
-                (Text(timeValue).foregroundColor(.primary) + 
-                 Text(" left").foregroundColor(activeColor))
+                (Text(timeValue)
                     .font(.system(size: 12 + fontSizeOffset, weight: .bold, design: .monospaced))
+                    .foregroundColor(.primary) +
+                 Text(" left")
+                    .font(.system(size: 11 + fontSizeOffset, weight: .bold, design: .monospaced))
+                    .foregroundColor(activeColor))
                     .frame(width: 90, alignment: .leading)
             } else {
                 Text(event.startDate, style: .time)

@@ -6,6 +6,7 @@ struct SettingsView: View {
     @AppStorage("showRemainingTime") private var showRemainingTime = true
     @AppStorage("fontSizeOffset") private var fontSizeOffset: Double = 0.0
     @AppStorage("daysInAdvance") private var daysInAdvance: Int = 3
+    @AppStorage("remainingTimeColor") private var remainingTimeColor: String = "Orange"
     
     var body: some View {
         TabView {
@@ -19,8 +20,6 @@ struct SettingsView: View {
                     Text("Next 2 Days").tag(2)
                     Text("Next 3 Days").tag(3)
                     Text("Next 7 Days").tag(7)
-                    Text("Next 14 Days").tag(14)
-                    Text("Next 30 Days").tag(30)
                 }
                 .onChange(of: daysInAdvance) {
                     EventManager.shared.fetchEvents()
@@ -37,6 +36,15 @@ struct SettingsView: View {
                     Text("Normal").tag(0.0)
                     Text("Large").tag(2.0)
                     Text("Extra Large").tag(4.0)
+                }
+                
+                Picker("Active Time Color", selection: $remainingTimeColor) {
+                    Text("Orange").tag("Orange")
+                    Text("Blue").tag("Blue")
+                    Text("Red").tag("Red")
+                    Text("Green").tag("Green")
+                    Text("Purple").tag("Purple")
+                    Text("Pink").tag("Pink")
                 }
             }
             .padding(20)

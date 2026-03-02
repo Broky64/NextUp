@@ -82,7 +82,7 @@ class EventManager: ObservableObject {
             let mins = max(0, Int(active.endDate.timeIntervalSince(now) / 60))
             let hours = mins / 60
             let remainder = mins % 60
-            let timeStr = hours > 0 ? "\(hours)h \(remainder)m" : "\(mins)m"
+            let timeStr = hours > 0 ? "\(hours)h \(remainder)m" : "\(mins) min"
             menuBarTitle = "\(active.title ?? "Event")... \(timeStr) left"
             return
         }

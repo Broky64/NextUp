@@ -19,7 +19,6 @@ struct ContentView: View {
         let now = eventManager.currentMinute
         let calendar = Calendar.current
         
-        var active: [EKEvent] = []
         var today: [EKEvent] = []
         var tomorrow: [EKEvent] = []
         var laterGroups: [Date: [EKEvent]] = [:]
@@ -28,27 +27,17 @@ struct ContentView: View {
             if !showAllDayEvents && event.isAllDay { continue }
             if !showPastEvents && !event.isAllDay && event.endDate < now { continue }
             
-            if !event.isAllDay && event.startDate <= now && event.endDate > now {
-                active.append(event)
-            } else if calendar.isDateInToday(event.startDate) {
+            let startOfDay = calendar.startOfDay(for: event.startDate)
+            if calendar.isDateInToday(event.startDate) {
                 today.append(event)
             } else if calendar.isDateInTomorrow(event.startDate) {
                 tomorrow.append(event)
             } else {
-                let startOfDay = calendar.startOfDay(for: event.startDate)
                 laterGroups[startOfDay, default: []].append(event)
             }
         }
         
         var result: [EventGroup] = []
-        if !active.isEmpty {
-            let earliestEnd = active.map { $0.endDate }.min() ?? now
-            let diff = max(0, Int(earliestEnd.timeIntervalSince(now) / 60))
-            let h = diff / 60
-            let m = diff % 60
-            let timeStr = h > 0 ? "\(h)h \(m)m" : "\(m) MIN"
-            result.append(EventGroup(title: "ENDING IN \(timeStr.uppercased())", events: active))
-        }
         if !today.isEmpty {
             result.append(EventGroup(title: "TODAY", events: today))
         }
@@ -65,22 +54,13 @@ struct ContentView: View {
         return result
     }
     
-    var highlightedEventID: String? {
-        let now = eventManager.currentMinute
-        if let active = eventManager.upcomingEvents.first(where: { !$0.isAllDay && $0.startDate <= now && $0.endDate > now }) {
-            return active.eventIdentifier
-        }
-        if let next = eventManager.upcomingEvents.first(where: { !$0.isAllDay && $0.startDate > now }) {
-            return next.eventIdentifier
-        }
-        return nil
-    }
+    
 
     var body: some View {
         VStack(spacing: 0) {
             if !eventManager.accessGranted {
                 Text("Calendar access required.")
-                    .font(.system(size: 13 + fontSizeOffset, weight: .medium, design: .rounded))
+                    .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .rounded))
                     .foregroundColor(.secondary)
                     .padding(.vertical, 32)
             } else if groupedEvents.isEmpty {
@@ -89,7 +69,7 @@ struct ContentView: View {
                         .font(.system(size: 24))
                         .foregroundColor(.primary.opacity(0.5))
                     Text("No upcoming events")
-                        .font(.system(size: 13 + fontSizeOffset, weight: .medium, design: .rounded))
+                        .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .rounded))
                         .foregroundColor(.secondary)
                 }
                 .padding(.vertical, 32)
@@ -99,7 +79,7 @@ struct ContentView: View {
                         ForEach(groupedEvents) { group in
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(group.title)
-                                    .font(.system(size: 10 + fontSizeOffset, weight: .bold, design: .rounded))
+                                    .font(.system(size: 9 + fontSizeOffset, weight: .bold, design: .rounded))
                                     .foregroundColor(.secondary)
                                     .padding(.horizontal, 12)
                                     .padding(.top, 2)
@@ -107,8 +87,8 @@ struct ContentView: View {
                                 ForEach(group.events, id: \.eventIdentifier) { event in
                                     EventRowView(
                                         event: event,
-                                        isHighlighted: event.eventIdentifier == highlightedEventID,
-                                        fontSizeOffset: fontSizeOffset
+                                        fontSizeOffset: fontSizeOffset,
+                                        currentMinute: eventManager.currentMinute
                                     )
                                 }
                             }
@@ -132,7 +112,7 @@ struct ContentView: View {
                         Spacer()
                         Text("⌘,").foregroundColor(.secondary).font(.system(size: 11))
                     }
-                    .font(.system(size: 13 + fontSizeOffset) )
+                    .font(.system(size: 12 + fontSizeOffset) )
                     .padding(.horizontal, 12)
                     .padding(.vertical, 3)
                     .contentShape(Rectangle())
@@ -148,7 +128,7 @@ struct ContentView: View {
                         Spacer()
                         Text("⌘Q").foregroundColor(.secondary).font(.system(size: 11))
                     }
-                    .font(.system(size: 13 + fontSizeOffset))
+                    .font(.system(size: 12 + fontSizeOffset))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 3)
                     .contentShape(Rectangle())
@@ -158,18 +138,32 @@ struct ContentView: View {
             }
             .padding(.bottom, 2)
         }
-        .frame(width: 280)
+        .frame(width: 300)
     }
 }
 
 struct EventRowView: View {
     let event: EKEvent
-    let isHighlighted: Bool
     let fontSizeOffset: Double
+    let currentMinute: Date
+    
+    @AppStorage("remainingTimeColor") private var remainingTimeColor: String = "Orange"
+    
+    var activeColor: Color {
+        switch remainingTimeColor {
+        case "Blue": return .blue
+        case "Red": return .red
+        case "Green": return .green
+        case "Purple": return .purple
+        case "Pink": return .pink
+        default: return .orange
+        }
+    }
     
     var body: some View {
-        let now = Date()
+        let now = currentMinute
         let isPast = !event.isAllDay && event.endDate < now
+        let isActive = !event.isAllDay && event.startDate <= now && event.endDate > now
         
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 1.5)
@@ -179,23 +173,33 @@ struct EventRowView: View {
                 
             if event.isAllDay {
                 Text("All Day")
-                    .font(.system(size: 13 + fontSizeOffset, weight: .medium, design: .monospaced))
-                    .foregroundColor(isHighlighted ? .white : (isPast ? .secondary.opacity(0.6) : .secondary))
-                    .frame(width: 65, alignment: .leading)
+                    .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .monospaced))
+                    .foregroundColor(isPast ? .secondary.opacity(0.6) : .secondary)
+                    .frame(width: 90, alignment: .leading)
+            } else if isActive {
+                let diff = max(0, Int(event.endDate.timeIntervalSince(now) / 60))
+                let h = diff / 60
+                let m = diff % 60
+                let timeValue = h > 0 ? "\(h)h \(m)m" : "\(m) min"
+                
+                (Text(timeValue).foregroundColor(.primary) + 
+                 Text(" left").foregroundColor(activeColor))
+                    .font(.system(size: 12 + fontSizeOffset, weight: .bold, design: .monospaced))
+                    .frame(width: 90, alignment: .leading)
             } else {
                 Text(event.startDate, style: .time)
-                    .font(.system(size: 13 + fontSizeOffset, weight: .medium, design: .monospaced))
-                    .foregroundColor(isHighlighted ? .white : (isPast ? .secondary.opacity(0.6) : .secondary))
-                    .frame(width: 65, alignment: .leading)
+                    .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .monospaced))
+                    .foregroundColor(isPast ? .secondary.opacity(0.6) : .secondary)
+                    .frame(width: 90, alignment: .leading)
             }
             
             Text("·")
-                .foregroundColor(isHighlighted ? .white.opacity(0.6) : .secondary.opacity(0.5))
-                .font(.system(size: 13 + fontSizeOffset, weight: .bold))
+                .foregroundColor(.secondary.opacity(0.5))
+                .font(.system(size: 12 + fontSizeOffset, weight: .bold))
                 
             Text(event.title)
-                .font(.system(size: 13 + fontSizeOffset, weight: .medium, design: .rounded))
-                .foregroundColor(isHighlighted ? .white : (isPast ? .secondary.opacity(0.6) : .primary))
+                .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .rounded))
+                .foregroundColor(isPast ? .secondary.opacity(0.6) : .primary)
                 .lineLimit(1)
                 
             Spacer()
@@ -203,7 +207,7 @@ struct EventRowView: View {
         .frame(height: 22)
         .padding(.horizontal, 8)
         .padding(.vertical, 2)
-        .background(isHighlighted ? Color.blue : Color.clear)
+        .background(Color.clear)
         .cornerRadius(4)
         .padding(.horizontal, 8)
     }

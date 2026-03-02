@@ -1,22 +1,37 @@
 import SwiftUI
 
 struct SettingsView: View {
-    // @AppStorage sauvegarde automatiquement la valeur sur le Mac
-    // Si la valeur n'existe pas encore, elle sera "true" par défaut
     @AppStorage("showAllDayEvents") private var showAllDayEvents = true
     @AppStorage("showPastEvents") private var showPastEvents = true
     @AppStorage("showRemainingTime") private var showRemainingTime = true
     @AppStorage("fontSizeOffset") private var fontSizeOffset: Double = 0.0
+    @AppStorage("daysInAdvance") private var daysInAdvance: Int = 3
     
     var body: some View {
-        Form {
-            Section {
+        TabView {
+            Form {
                 Toggle("Show All-Day Events", isOn: $showAllDayEvents)
                 Toggle("Show Past Events", isOn: $showPastEvents)
                 Toggle("Show Remaining Time", isOn: $showRemainingTime)
+                
+                Picker("Show events for", selection: $daysInAdvance) {
+                    Text("Today only").tag(1)
+                    Text("Next 2 Days").tag(2)
+                    Text("Next 3 Days").tag(3)
+                    Text("Next 7 Days").tag(7)
+                    Text("Next 14 Days").tag(14)
+                    Text("Next 30 Days").tag(30)
+                }
+                .onChange(of: daysInAdvance) {
+                    EventManager.shared.fetchEvents()
+                }
+            }
+            .padding(20)
+            .tabItem {
+                Label("General", systemImage: "gearshape")
             }
             
-            Section {
+            Form {
                 Picker("Text Size", selection: $fontSizeOffset) {
                     Text("Small").tag(-2.0)
                     Text("Normal").tag(0.0)
@@ -24,10 +39,12 @@ struct SettingsView: View {
                     Text("Extra Large").tag(4.0)
                 }
             }
+            .padding(20)
+            .tabItem {
+                Label("Appearance", systemImage: "paintpalette")
+            }
         }
-        .padding(20)
-        .frame(width: 350, height: 210)
-        .navigationTitle("NextUp Settings")
+        .frame(width: 400, height: 250)
     }
 }
 

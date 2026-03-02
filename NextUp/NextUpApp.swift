@@ -2,16 +2,19 @@ import SwiftUI
 
 @main
 struct NextUpApp: App {
+    @StateObject private var eventManager = EventManager.shared
+
     var body: some Scene {
-        // MenuBarExtra crée l'icône dans la barre des menus
-        MenuBarExtra("NextUp", systemImage: "calendar.badge.clock") {
+        MenuBarExtra {
             ContentView()
+                .environmentObject(eventManager)
+        } label: {
+            Label(eventManager.menuBarTitle, systemImage: "calendar.badge.clock")
         }
-        // Le style .window permet d'afficher une belle vue SwiftUI (popover) au clic
         .menuBarExtraStyle(.window)
         
         Settings {
-                    SettingsView()
-                }
+            SettingsView()
+        }
     }
 }

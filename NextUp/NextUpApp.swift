@@ -9,5 +9,9 @@ struct NextUpApp: App {
         }
         // Le style .window permet d'afficher une belle vue SwiftUI (popover) au clic
         .menuBarExtraStyle(.window)
+        
+        Settings {
+                    SettingsView()
+                }
     }
 }

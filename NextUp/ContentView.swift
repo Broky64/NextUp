@@ -4,8 +4,22 @@ import Combine
 
 struct ContentView: View {
     @StateObject private var eventManager = EventManager()
+    @Environment(\.openSettings) private var openSettings
+    
+    @AppStorage("showAllDayEvents") private var showAllDayEvents = true
+    @AppStorage("showPastEvents") private var showPastEvents = true
+    @AppStorage("showRemainingTime") private var showRemainingTime = true
     
     let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+    
+    var displayEvents: [EKEvent] {
+        let now = Date()
+        return eventManager.todaysEvents.filter { event in
+            if !showAllDayEvents && event.isAllDay { return false }
+            if !showPastEvents && !event.isAllDay && event.endDate < now { return false }
+            return true
+        }
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -16,7 +30,9 @@ struct ContentView: View {
                     .foregroundColor(.secondary)
                     .padding()
                     .multilineTextAlignment(.center)
-            } else if !eventManager.todaysEvents.isEmpty {
+                
+            // 3. On utilise notre liste filtrée (displayEvents) ici
+            } else if !displayEvents.isEmpty {
                 
                 // HEADER
                 HStack(spacing: 4) {
@@ -34,10 +50,12 @@ struct ContentView: View {
                 // LISTE DES ÉVÉNEMENTS
                 ScrollView {
                     VStack(spacing: 2) {
-                        ForEach(eventManager.todaysEvents, id: \.eventIdentifier) { event in
+                        // 4. Et on utilise displayEvents ici aussi
+                        ForEach(displayEvents, id: \.eventIdentifier) { event in
                             
-                            // On ne grise pas les all-day tant que la journée n'est pas finie
-                            let isPast = !event.isAllDay && event.endDate < Date()
+                            let now = Date()
+                            let isPast = !event.isAllDay && event.endDate < now
+                            let isOngoing = !event.isAllDay && event.startDate <= now && event.endDate > now
                             
                             HStack(alignment: .center, spacing: 8) {
                                 Circle()
@@ -45,14 +63,25 @@ struct ContentView: View {
                                     .frame(width: 8, height: 8)
                                     .opacity(isPast ? 0.3 : 1.0)
                                 
-                                Text(event.title)
-                                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                                    .lineLimit(1)
-                                    .foregroundColor(isPast ? .secondary : .primary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(event.title)
+                                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                                        .lineLimit(1)
+                                        .foregroundColor(isPast ? .secondary : .primary)
+                                        
+                                    if showRemainingTime && isOngoing {
+                                        HStack(spacing: 3) {
+                                            Text(event.endDate, style: .timer)
+                                                .monospacedDigit()
+                                            Text("left")
+                                        }
+                                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                        .foregroundColor(.orange)
+                                    }
+                                }
                                 
                                 Spacer()
                                 
-                                // GESTION DU TEXTE "ALL DAY" ou de l'heure
                                 if event.isAllDay {
                                     Text("All Day")
                                         .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -95,8 +124,10 @@ struct ContentView: View {
             HStack(spacing: 12) {
                 Spacer()
                 
+                // Settings Button
                 Button {
-                    print("Open Settings")
+                    NSApp.activate(ignoringOtherApps: true)
+                    openSettings()
                 } label: {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 12))

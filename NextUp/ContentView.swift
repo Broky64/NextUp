@@ -9,6 +9,8 @@ struct ContentView: View {
     @AppStorage("showAllDayEvents") private var showAllDayEvents = true
     @AppStorage("showPastEvents") private var showPastEvents = true
     @AppStorage("showRemainingTime") private var showRemainingTime = true
+    @AppStorage("fontSizeOffset") private var fontSizeOffset: Double = 0.0
+
     
     let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     
@@ -65,7 +67,7 @@ struct ContentView: View {
                                 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(event.title)
-                                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                                        .font(.system(size: 13 + fontSizeOffset, weight: .medium, design: .rounded))
                                         .lineLimit(1)
                                         .foregroundColor(isPast ? .secondary : .primary)
                                         
@@ -75,7 +77,7 @@ struct ContentView: View {
                                                 .monospacedDigit()
                                             Text("left")
                                         }
-                                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                        .font(.system(size: 10 + fontSizeOffset, weight: .semibold, design: .rounded))
                                         .foregroundColor(.orange)
                                     }
                                 }
@@ -84,7 +86,7 @@ struct ContentView: View {
                                 
                                 if event.isAllDay {
                                     Text("All Day")
-                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                        .font(.system(size: 11 + fontSizeOffset, weight: .semibold, design: .rounded))
                                         .foregroundColor(.secondary)
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
@@ -92,7 +94,7 @@ struct ContentView: View {
                                         .cornerRadius(4)
                                 } else {
                                     Text(event.startDate, style: .time)
-                                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                                        .font(.system(size: 12 + fontSizeOffset, weight: .regular, design: .rounded))
                                         .foregroundColor(.secondary)
                                         .opacity(isPast ? 0.5 : 1.0)
                                 }
@@ -111,7 +113,7 @@ struct ContentView: View {
                         .font(.system(size: 24))
                         .foregroundColor(.orange)
                     Text("No events today")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .font(.system(size: 13 + fontSizeOffset, weight: .medium, design: .rounded))
                         .foregroundColor(.secondary)
                 }
                 .padding(.vertical, 16)

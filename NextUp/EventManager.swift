@@ -2,6 +2,12 @@ import Foundation
 import EventKit
 import Combine
 
+enum MenuBarMode: String, CaseIterable {
+    case none
+    case currentEvent
+    case upcomingEvent
+}
+
 class EventManager: ObservableObject {
     static let shared = EventManager()
     
@@ -9,7 +15,7 @@ class EventManager: ObservableObject {
     
     @Published var upcomingEvents: [EKEvent] = []
     @Published var accessGranted = false
-    @Published var menuBarTitle: String = "NextUp"
+    @Published var menuBarTitle: String = ""
     @Published var currentMinute: Date = Date()
     
     private var timerCancellable: AnyCancellable?
@@ -76,27 +82,42 @@ class EventManager: ObservableObject {
         }
     }
     
-    private func updateMenuBarTitle(now: Date) {
-        let activeEvent = upcomingEvents.first { !$0.isAllDay && $0.startDate <= now && $0.endDate > now }
-        if let active = activeEvent {
-            let mins = max(0, Int(active.endDate.timeIntervalSince(now) / 60))
+    func updateMenuBarTitle(now: Date = Date()) {
+        let savedModeString = UserDefaults.standard.string(forKey: "menuBarDisplayMode") ?? MenuBarMode.currentEvent.rawValue
+        let mode = MenuBarMode(rawValue: savedModeString) ?? .currentEvent
+        
+        guard mode != .none else {
+            menuBarTitle = ""
+            return
+        }
+        
+        func formatTitle(_ title: String?) -> String {
+            let text = title ?? "Event"
+            return text.count > 20 ? String(text.prefix(20)) + "..." : text
+        }
+        
+        func formatTime(_ mins: Int) -> String {
             let hours = mins / 60
             let remainder = mins % 60
-            let timeStr = hours > 0 ? "\(hours)h \(remainder)m" : "\(mins) min"
-            menuBarTitle = "\(active.title ?? "Event")... \(timeStr) left"
-            return
+            return hours > 0 ? "\(hours)h \(remainder)m" : "\(mins)m"
         }
         
-        let veryNext = upcomingEvents.first { !$0.isAllDay && $0.startDate > now }
-        if let next = veryNext {
-            let diff = max(0, Int(next.startDate.timeIntervalSince(now) / 60))
-            let hours = diff / 60
-            let remainder = diff % 60
-            let timeStr = hours > 0 ? "in \(hours)h \(remainder)m" : "in \(diff)m"
-            menuBarTitle = "\(next.title ?? "Event")... \(timeStr)"
-            return
+        if mode == .currentEvent {
+            let activeEvent = upcomingEvents.first { !$0.isAllDay && $0.startDate <= now && $0.endDate > now }
+            if let active = activeEvent {
+                let mins = max(0, Int(active.endDate.timeIntervalSince(now) / 60))
+                menuBarTitle = "\(formatTitle(active.title))... \(formatTime(mins)) left"
+                return
+            }
+        } else if mode == .upcomingEvent {
+            let veryNext = upcomingEvents.first { !$0.isAllDay && $0.startDate > now }
+            if let next = veryNext {
+                let diff = max(0, Int(next.startDate.timeIntervalSince(now) / 60))
+                menuBarTitle = "\(formatTitle(next.title))... in \(formatTime(diff))"
+                return
+            }
         }
         
-        menuBarTitle = "No upcoming events"
+        menuBarTitle = ""
     }
 }

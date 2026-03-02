@@ -6,10 +6,9 @@ struct NextUpApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            ContentView()
-                .environmentObject(eventManager)
+            ContentView(eventManager: eventManager)
         } label: {
-            Label(eventManager.menuBarTitle, systemImage: "calendar.badge.clock")
+            Text(Image(systemName: "calendar.badge.clock")) + Text(eventManager.menuBarTitle.isEmpty ? "" : " \(eventManager.menuBarTitle)")
         }
         .menuBarExtraStyle(.window)
         

@@ -8,7 +8,7 @@ struct EventGroup: Identifiable {
 }
 
 struct ContentView: View {
-    @EnvironmentObject private var eventManager: EventManager
+    @ObservedObject var eventManager: EventManager
     @Environment(\.openSettings) private var openSettings
     
     @AppStorage("showAllDayEvents") private var showAllDayEvents = true

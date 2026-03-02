@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage("fontSizeOffset") private var fontSizeOffset: Double = 0.0
     @AppStorage("daysInAdvance") private var daysInAdvance: Int = 3
     @AppStorage("remainingTimeColor") private var remainingTimeColor: String = "Orange"
+    @AppStorage("menuBarDisplayMode") private var menuBarDisplayMode: MenuBarMode = .currentEvent
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     
     var body: some View {
@@ -33,6 +34,15 @@ struct SettingsView: View {
                 Toggle("Show All-Day Events", isOn: $showAllDayEvents)
                 Toggle("Show Past Events", isOn: $showPastEvents)
                 Toggle("Show Remaining Time", isOn: $showRemainingTime)
+                
+                Picker("Menu Bar Display", selection: $menuBarDisplayMode) {
+                    Text("None (Icon only)").tag(MenuBarMode.none)
+                    Text("Current Event (Time left)").tag(MenuBarMode.currentEvent)
+                    Text("Upcoming Event (Time until)").tag(MenuBarMode.upcomingEvent)
+                }
+                .onChange(of: menuBarDisplayMode) {
+                    EventManager.shared.updateMenuBarTitle()
+                }
                 
                 Picker("Show events for", selection: $daysInAdvance) {
                     Text("Today only").tag(1)

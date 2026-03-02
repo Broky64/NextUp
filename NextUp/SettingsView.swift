@@ -1,4 +1,5 @@
 import SwiftUI
+import ServiceManagement
 
 struct SettingsView: View {
     @AppStorage("showAllDayEvents") private var showAllDayEvents = true
@@ -7,10 +8,28 @@ struct SettingsView: View {
     @AppStorage("fontSizeOffset") private var fontSizeOffset: Double = 0.0
     @AppStorage("daysInAdvance") private var daysInAdvance: Int = 3
     @AppStorage("remainingTimeColor") private var remainingTimeColor: String = "Orange"
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     
     var body: some View {
         TabView {
             Form {
+                Toggle("Launch at login", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) {
+                        do {
+                            if launchAtLogin {
+                                try SMAppService.mainApp.register()
+                            } else {
+                                try SMAppService.mainApp.unregister()
+                            }
+                        } catch {
+                            print("Failed to update Launch at login: \(error.localizedDescription)")
+                            launchAtLogin = SMAppService.mainApp.status == .enabled
+                        }
+                    }
+                    .onAppear {
+                        launchAtLogin = SMAppService.mainApp.status == .enabled
+                    }
+                
                 Toggle("Show All-Day Events", isOn: $showAllDayEvents)
                 Toggle("Show Past Events", isOn: $showPastEvents)
                 Toggle("Show Remaining Time", isOn: $showRemainingTime)

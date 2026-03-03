@@ -89,7 +89,10 @@ struct ContentView: View {
                                     EventRowView(
                                         event: event,
                                         fontSizeOffset: fontSizeOffset,
-                                        currentMinute: eventManager.currentMinute
+                                        currentMinute: eventManager.currentMinute,
+                                        openEvent: { selectedEvent in
+                                            eventManager.openEventInCalendar(event: selectedEvent)
+                                        }
                                     )
                                 }
                             }
@@ -182,8 +185,10 @@ struct EventRowView: View {
     let event: EKEvent
     let fontSizeOffset: Double
     let currentMinute: Date
+    let openEvent: (EKEvent) -> Void
     
     @AppStorage("remainingTimeColor") private var remainingTimeColor: String = "Orange"
+    @State private var isHovering = false
     
     var activeColor: Color {
         switch remainingTimeColor {
@@ -207,53 +212,63 @@ struct EventRowView: View {
         let isPast = !event.isAllDay && event.endDate < now
         let isActive = !event.isAllDay && event.startDate <= now && event.endDate > now
         
-        HStack(spacing: 8) {
-            RoundedRectangle(cornerRadius: 1.5)
-                .fill(Color(nsColor: event.calendar.color))
-                .frame(width: 3)
-                .padding(.vertical, 4)
+        Button {
+            openEvent(event)
+        } label: {
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color(nsColor: event.calendar.color))
+                    .frame(width: 3)
+                    .padding(.vertical, 4)
+                    
+                if event.isAllDay {
+                    Text("All Day")
+                        .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .monospaced))
+                        .foregroundColor(isPast ? .secondary.opacity(0.6) : .secondary)
+                        .frame(width: 90, alignment: .leading)
+                } else if isActive {
+                    let diff = roundedMinutes(from: now, to: event.endDate)
+                    let h = diff / 60
+                    let m = diff % 60
+                    let timeValue = h > 0 ? "\(h)h \(m)m" : "\(m) min"
+                    
+                    (Text(timeValue)
+                        .font(.system(size: 12 + fontSizeOffset, weight: .bold, design: .monospaced))
+                        .foregroundColor(.primary) +
+                     Text(" left")
+                        .font(.system(size: 11 + fontSizeOffset, weight: .bold, design: .monospaced))
+                        .foregroundColor(activeColor))
+                        .frame(width: 90, alignment: .leading)
+                } else {
+                    Text(event.startDate, style: .time)
+                        .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .monospaced))
+                        .foregroundColor(isPast ? .secondary.opacity(0.6) : .secondary)
+                        .frame(width: 90, alignment: .leading)
+                }
                 
-            if event.isAllDay {
-                Text("All Day")
-                    .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .monospaced))
-                    .foregroundColor(isPast ? .secondary.opacity(0.6) : .secondary)
-                    .frame(width: 90, alignment: .leading)
-            } else if isActive {
-                let diff = roundedMinutes(from: now, to: event.endDate)
-                let h = diff / 60
-                let m = diff % 60
-                let timeValue = h > 0 ? "\(h)h \(m)m" : "\(m) min"
-                
-                (Text(timeValue)
-                    .font(.system(size: 12 + fontSizeOffset, weight: .bold, design: .monospaced))
-                    .foregroundColor(.primary) +
-                 Text(" left")
-                    .font(.system(size: 11 + fontSizeOffset, weight: .bold, design: .monospaced))
-                    .foregroundColor(activeColor))
-                    .frame(width: 90, alignment: .leading)
-            } else {
-                Text(event.startDate, style: .time)
-                    .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .monospaced))
-                    .foregroundColor(isPast ? .secondary.opacity(0.6) : .secondary)
-                    .frame(width: 90, alignment: .leading)
+                Text("·")
+                    .foregroundColor(.secondary.opacity(0.5))
+                    .font(.system(size: 12 + fontSizeOffset, weight: .bold))
+                    
+                Text(event.title)
+                    .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .rounded))
+                    .foregroundColor(isPast ? .secondary.opacity(0.6) : .primary)
+                    .lineLimit(1)
+                    
+                Spacer()
             }
-            
-            Text("·")
-                .foregroundColor(.secondary.opacity(0.5))
-                .font(.system(size: 12 + fontSizeOffset, weight: .bold))
-                
-            Text(event.title)
-                .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .rounded))
-                .foregroundColor(isPast ? .secondary.opacity(0.6) : .primary)
-                .lineLimit(1)
-                
-            Spacer()
         }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .frame(height: 22)
         .padding(.horizontal, 8)
         .padding(.vertical, 2)
-        .background(Color.clear)
+        .background(isHovering ? Color.primary.opacity(0.08) : Color.clear)
         .cornerRadius(4)
         .padding(.horizontal, 8)
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .help("Click to open in Calendar")
     }
 }

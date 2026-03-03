@@ -22,15 +22,27 @@ class EventManager: ObservableObject {
     @Published var currentMinute: Date = Date()
     @AppStorage("disabledCalendarIDs") var disabledCalendarIDs: String = ""
     
-    private let calendar = Calendar.current
+    private var calendar: Calendar { Calendar.current }
     private var timerCancellable: AnyCancellable?
     private var alignmentCancellable: AnyCancellable?
     private var refreshEnabled = true
     private var lastProcessedMinute: Date?
+    private var lastKnownDayStart = Calendar.current.startOfDay(for: Date())
+    private var notificationObservers: [NSObjectProtocol] = []
+    private var workspaceNotificationObservers: [NSObjectProtocol] = []
     
     private init() {
         refreshEnabled = shouldRefreshInBackground()
+        setupSystemObservers()
         requestAccess()
+    }
+    
+    deinit {
+        stopTimer()
+        notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        workspaceNotificationObservers.forEach {
+            NSWorkspace.shared.notificationCenter.removeObserver($0)
+        }
     }
 
     private var disabledCalendarIDSet: Set<String> {
@@ -78,6 +90,65 @@ class EventManager: ObservableObject {
 
         disabledCalendarIDs = disabled.sorted().joined(separator: ",")
         fetchEvents()
+    }
+    
+    private func setupSystemObservers() {
+        let timezoneObserver = NotificationCenter.default.addObserver(
+            forName: .NSSystemTimeZoneDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleTimezoneChange()
+        }
+        
+        let dayChangedObserver = NotificationCenter.default.addObserver(
+            forName: .NSCalendarDayChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleDayChanged()
+        }
+        
+        let wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleWakeFromSleep()
+        }
+        
+        notificationObservers = [timezoneObserver, dayChangedObserver]
+        workspaceNotificationObservers = [wakeObserver]
+    }
+    
+    private func handleTimezoneChange() {
+        guard accessGranted else { return }
+        store.reset()
+        lastKnownDayStart = calendar.startOfDay(for: Date())
+        lastProcessedMinute = nil
+        fetchTodaysEvents(referenceDate: Date())
+        refreshTimerIfNeeded()
+    }
+    
+    private func handleDayChanged() {
+        guard accessGranted else { return }
+        refreshForDayBoundary(referenceDate: Date())
+    }
+    
+    private func handleWakeFromSleep() {
+        guard accessGranted else { return }
+        store.reset()
+        lastKnownDayStart = calendar.startOfDay(for: Date())
+        lastProcessedMinute = nil
+        fetchTodaysEvents(referenceDate: Date())
+        refreshTimerIfNeeded()
+    }
+    
+    private func refreshForDayBoundary(referenceDate: Date) {
+        lastKnownDayStart = calendar.startOfDay(for: referenceDate)
+        lastProcessedMinute = nil
+        upcomingEvents = []
+        fetchTodaysEvents(referenceDate: referenceDate)
     }
     
     private func startTimer() {
@@ -172,6 +243,7 @@ class EventManager: ObservableObject {
         
         if granted {
             lastProcessedMinute = nil
+            lastKnownDayStart = calendar.startOfDay(for: Date())
             fetchTodaysEvents(referenceDate: Date())
             refreshTimerIfNeeded()
             return
@@ -191,8 +263,33 @@ class EventManager: ObservableObject {
         NSWorkspace.shared.open(url)
     }
     
+    func openEventInCalendar(event: EKEvent) {
+        closeMenuBarPopoverIfNeeded()
+        
+        if let externalID = event.calendarItemExternalIdentifier,
+           !externalID.isEmpty,
+           let encodedID = externalID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+           let deepLinkURL = URL(string: "ical://ekevent/\(encodedID)"),
+           NSWorkspace.shared.open(deepLinkURL) {
+            return
+        }
+        
+        let timestamp = Int(event.startDate.timeIntervalSinceReferenceDate)
+        guard let fallbackURL = URL(string: "calshow:\(timestamp)") else { return }
+        NSWorkspace.shared.open(fallbackURL)
+    }
+    
+    private func closeMenuBarPopoverIfNeeded() {
+        NSApp.keyWindow?.performClose(nil)
+    }
+    
     func handleMinuteTick(_ date: Date = Date()) {
         let minuteStart = calendar.dateInterval(of: .minute, for: date)?.start ?? date
+        let dayStart = calendar.startOfDay(for: minuteStart)
+        if dayStart != lastKnownDayStart {
+            refreshForDayBoundary(referenceDate: minuteStart)
+            return
+        }
         guard minuteStart != lastProcessedMinute else { return }
         lastProcessedMinute = minuteStart
         fetchTodaysEvents(referenceDate: minuteStart)
@@ -213,6 +310,7 @@ class EventManager: ObservableObject {
         availableCalendars = allCalendars
         let calendars = enabledCalendars
         let now = referenceDate
+        lastKnownDayStart = calendar.startOfDay(for: now)
         
         let startOfDay = calendar.startOfDay(for: now)
         let savedDays = UserDefaults.standard.integer(forKey: "daysInAdvance")
@@ -246,9 +344,18 @@ class EventManager: ObservableObject {
         fetchTodaysEvents(referenceDate: Date())
     }
     
+    func truncateTitle(_ title: String, limit: Int) -> String {
+        let safeLimit = max(0, limit)
+        guard safeLimit > 0 else { return "" }
+        guard title.count > safeLimit else { return title }
+        return String(title.prefix(safeLimit)) + "..."
+    }
+    
     func updateMenuBarTitle(now: Date = Date()) {
         let savedModeString = UserDefaults.standard.string(forKey: "menuBarDisplayMode") ?? MenuBarMode.currentEvent.rawValue
         let mode = MenuBarMode(rawValue: savedModeString) ?? .currentEvent
+        let savedCharacterLimit = UserDefaults.standard.integer(forKey: "menuBarCharacterLimit")
+        let characterLimit = savedCharacterLimit == 0 ? 20 : max(5, min(50, savedCharacterLimit))
         
         guard mode != .none else {
             if menuBarTitle != "" {
@@ -263,11 +370,6 @@ class EventManager: ObservableObject {
                 menuBarTitle = deniedTitle
             }
             return
-        }
-        
-        func formatTitle(_ title: String?) -> String {
-            let text = title ?? "Event"
-            return text.count > 20 ? String(text.prefix(20)) + "..." : text
         }
         
         func formatTime(_ mins: Int) -> String {
@@ -286,12 +388,14 @@ class EventManager: ObservableObject {
 
         func activeText(for event: EKEvent) -> String {
             let mins = roundedMinutes(from: now, to: event.endDate)
-            return "\(formatTitle(event.title)) \(formatTime(mins)) left"
+            let title = truncateTitle(event.title ?? "Event", limit: characterLimit)
+            return "\(title) \(formatTime(mins)) left"
         }
 
         func nextText(for event: EKEvent) -> String {
             let mins = roundedMinutes(from: now, to: event.startDate)
-            return "\(formatTitle(event.title)) in \(formatTime(mins))"
+            let title = truncateTitle(event.title ?? "Event", limit: characterLimit)
+            return "\(title) in \(formatTime(mins))"
         }
         
         var nextTitle = ""

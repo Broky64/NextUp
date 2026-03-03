@@ -11,6 +11,7 @@ struct SettingsView: View {
     @AppStorage("daysInAdvance") private var daysInAdvance: Int = 3
     @AppStorage("remainingTimeColor") private var remainingTimeColor: String = "Orange"
     @AppStorage("menuBarDisplayMode") private var menuBarDisplayMode: MenuBarMode = .currentEvent
+    @AppStorage("menuBarCharacterLimit") private var characterLimit: Int = 20
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     private var textSizeBinding: Binding<Int> {
@@ -29,6 +30,12 @@ struct SettingsView: View {
         case "Pink": return .pink
         default: return .orange
         }
+    }
+    
+    private var menuBarPreviewText: String {
+        let sampleTitle = "Quarterly roadmap review with product and engineering stakeholders"
+        let truncated = eventManager.truncateTitle(sampleTitle, limit: characterLimit)
+        return "\(truncated) 12m left"
     }
 
     var body: some View {
@@ -60,6 +67,28 @@ struct SettingsView: View {
                         )
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                    }
+                    
+                    settingsCard("Display Preferences", systemImage: "textformat") {
+                        HStack {
+                            Text("Character limit: \(characterLimit)")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                            Spacer()
+                        }
+                        
+                        Stepper("Adjust limit", value: $characterLimit, in: 5...50)
+                            .onChange(of: characterLimit) {
+                                EventManager.shared.updateMenuBarTitle()
+                            }
+                        
+                        Text("Preview")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        
+                        Text(menuBarPreviewText)
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .lineLimit(1)
                     }
 
                     settingsCard("Timeline", systemImage: "calendar") {

@@ -3,8 +3,8 @@ import SwiftUI
 @main
 struct NextUpApp: App {
     @StateObject private var eventManager = EventManager.shared
-    @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
-    @AppStorage("menuBarDisplayMode") private var menuBarDisplayMode: MenuBarMode = .currentEvent
+    @AppStorage(SettingsKeys.showMenuBarIcon) private var showMenuBarIcon = true
+    @AppStorage(SettingsKeys.menuBarDisplayMode) private var menuBarDisplayMode: MenuBarMode = .currentEvent
 
     var body: some Scene {
         MenuBarExtra {
@@ -29,7 +29,6 @@ struct NextUpApp: App {
                     Text(" ")
                 }
             }
-            .id("\(eventManager.menuBarTitle)|\(menuBarDisplayMode.rawValue)|\(showMenuBarIcon)")
         }
         .menuBarExtraStyle(.window)
         

@@ -1,247 +1,304 @@
 import SwiftUI
 import ServiceManagement
 import EventKit
+import AppKit
+
+private enum SettingsTab: Hashable {
+    case general
+    case appearance
+    case calendars
+    case about
+}
 
 struct SettingsView: View {
     @ObservedObject private var eventManager = EventManager.shared
-    @AppStorage("showAllDayEvents") private var showAllDayEvents = true
-    @AppStorage("showPastEvents") private var showPastEvents = true
-    @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
-    @AppStorage("fontSizeOffset") private var fontSizeOffset: Double = 0.0
-    @AppStorage("daysInAdvance") private var daysInAdvance: Int = 3
-    @AppStorage("remainingTimeColor") private var remainingTimeColor: String = "Orange"
-    @AppStorage("menuBarDisplayMode") private var menuBarDisplayMode: MenuBarMode = .currentEvent
-    @AppStorage("menuBarCharacterLimit") private var characterLimit: Int = 20
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @AppStorage(SettingsKeys.showMenuBarIcon) private var showMenuBarIcon = true
+    @AppStorage(SettingsKeys.menuBarDisplayMode) private var menuBarDisplayMode: MenuBarMode = .currentEvent
+    @AppStorage(SettingsKeys.menuBarCharacterLimit) private var characterLimit: Int = 20
 
-    private var textSizeBinding: Binding<Int> {
-        Binding(
-            get: { Int(fontSizeOffset) + 12 },
-            set: { fontSizeOffset = Double($0 - 12) }
-        )
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var selectedTab: SettingsTab = .general
+
+    private var previewTitle: String {
+        let sample = "Quarterly roadmap review with product and engineering stakeholders"
+        return eventManager.truncateTitle(sample, limit: characterLimit)
     }
 
-    private var activeColor: Color {
-        switch remainingTimeColor {
-        case "Blue": return .blue
-        case "Red": return .red
-        case "Green": return .green
-        case "Purple": return .purple
-        case "Pink": return .pink
-        default: return .orange
+    private var groupedCalendars: [(source: String, calendars: [EKCalendar])] {
+        let grouped = Dictionary(grouping: eventManager.availableCalendars) { calendar in
+            let source = calendar.source.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            return source.isEmpty ? "Other" : source
+        }
+
+        return grouped.keys.sorted().map { source in
+            let calendars = (grouped[source] ?? []).sorted {
+                $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
+            return (source, calendars)
         }
     }
-    
-    private var menuBarPreviewText: String {
-        let sampleTitle = "Quarterly roadmap review with product and engineering stakeholders"
-        let truncated = eventManager.truncateTitle(sampleTitle, limit: characterLimit)
-        return "\(truncated) 12m left"
+
+    private var appVersionText: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+        let build = info?["CFBundleVersion"] as? String ?? "1"
+        return "Version \(version) (Build \(build))"
     }
 
     var body: some View {
-        TabView {
-            ScrollView {
-                VStack(spacing: 14) {
-                    settingsCard("Menu Bar", systemImage: "menubar.rectangle") {
-                        Picker("Display", selection: $menuBarDisplayMode) {
-                            Text("Icon only").tag(MenuBarMode.none)
-                            Text("Current event").tag(MenuBarMode.currentEvent)
-                            Text("Upcoming event").tag(MenuBarMode.upcomingEvent)
-                        }
-                        .pickerStyle(.menu)
-                        .onChange(of: menuBarDisplayMode) {
-                            EventManager.shared.updateMenuBarTitle()
-                            EventManager.shared.refreshFromSettings()
-                        }
+        TabView(selection: $selectedTab) {
+            generalTab
+                .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(SettingsTab.general)
 
-                        Toggle("Show icon with text", isOn: $showMenuBarIcon)
-                            .disabled(menuBarDisplayMode == .none)
-                            .onChange(of: showMenuBarIcon) {
-                                EventManager.shared.refreshFromSettings()
-                            }
+            appearanceTab
+                .tabItem { Label("Appearance", systemImage: "paintpalette") }
+                .tag(SettingsTab.appearance)
 
-                        Text(
-                            menuBarDisplayMode == .none
-                                ? "Icon is always visible in Icon only mode."
-                                : "Turn this off for a cleaner text-only menu bar."
-                        )
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    }
-                    
-                    settingsCard("Display Preferences", systemImage: "textformat") {
-                        HStack {
-                            Text("Character limit: \(characterLimit)")
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                            Spacer()
-                        }
-                        
-                        Stepper("Adjust limit", value: $characterLimit, in: 5...50)
-                            .onChange(of: characterLimit) {
-                                EventManager.shared.updateMenuBarTitle()
-                            }
-                        
-                        Text("Preview")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                        
-                        Text(menuBarPreviewText)
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .lineLimit(1)
-                    }
+            calendarsTab
+                .tabItem { Label("Calendars", systemImage: "calendar") }
+                .tag(SettingsTab.calendars)
 
-                    settingsCard("Timeline", systemImage: "calendar") {
-                        Toggle("Show all-day events", isOn: $showAllDayEvents)
-                        Toggle("Show past events", isOn: $showPastEvents)
-
-                        Picker("Look ahead", selection: $daysInAdvance) {
-                            Text("1 day").tag(1)
-                            Text("2 days").tag(2)
-                            Text("3 days").tag(3)
-                            Text("7 days").tag(7)
-                        }
-                        .pickerStyle(.segmented)
-                        .onChange(of: daysInAdvance) {
-                            EventManager.shared.fetchEvents()
-                        }
-                    }
-                    
-                    settingsCard("Visible Calendars", systemImage: "list.bullet.rectangle") {
-                        if !eventManager.accessGranted {
-                            Text("Calendar access is required to choose visible calendars.")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                        } else if eventManager.availableCalendars.isEmpty {
-                            Text("No calendars found.")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                        } else {
-                            VStack(alignment: .leading, spacing: 8) {
-                                ForEach(eventManager.availableCalendars, id: \.calendarIdentifier) { calendar in
-                                    Toggle(
-                                        isOn: Binding(
-                                            get: {
-                                                eventManager.isCalendarEnabled(id: calendar.calendarIdentifier)
-                                            },
-                                            set: { isEnabled in
-                                                let currentlyEnabled = eventManager.isCalendarEnabled(id: calendar.calendarIdentifier)
-                                                guard isEnabled != currentlyEnabled else { return }
-                                                eventManager.toggleCalendar(id: calendar.calendarIdentifier)
-                                            }
-                                        )
-                                    ) {
-                                        HStack(spacing: 8) {
-                                            Circle()
-                                                .fill(Color(nsColor: calendar.color))
-                                                .frame(width: 8, height: 8)
-                                            
-                                            VStack(alignment: .leading, spacing: 1) {
-                                                Text(calendar.title)
-                                                Text(calendar.source.title)
-                                                    .font(.system(size: 11))
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                        }
-                                    }
-                                    .toggleStyle(.switch)
-                                }
-                            }
-                        }
-                    }
-
-                    settingsCard("Startup", systemImage: "power") {
-                        Toggle("Launch at login", isOn: $launchAtLogin)
-                            .onChange(of: launchAtLogin) {
-                                do {
-                                    if launchAtLogin {
-                                        try SMAppService.mainApp.register()
-                                    } else {
-                                        try SMAppService.mainApp.unregister()
-                                    }
-                                } catch {
-                                    print("Failed to update Launch at login: \(error.localizedDescription)")
-                                    launchAtLogin = SMAppService.mainApp.status == .enabled
-                                }
-                            }
-                            .onAppear {
-                                launchAtLogin = SMAppService.mainApp.status == .enabled
-                            }
-                    }
-                }
-                .padding(16)
-            }
-            .tabItem {
-                Label("General", systemImage: "gearshape")
-            }
-
-            ScrollView {
-                VStack(spacing: 14) {
-                    settingsCard("Typography", systemImage: "textformat.size") {
-                        HStack {
-                            Text("Text size")
-                            Spacer()
-                            Text("\(textSizeBinding.wrappedValue) pt")
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-
-                        Stepper("Adjust size", value: textSizeBinding, in: 8...24)
-                    }
-
-                    settingsCard("Highlights", systemImage: "paintpalette") {
-                        Picker("Active time color", selection: $remainingTimeColor) {
-                            Text("Orange").tag("Orange")
-                            Text("Blue").tag("Blue")
-                            Text("Red").tag("Red")
-                            Text("Green").tag("Green")
-                            Text("Purple").tag("Purple")
-                            Text("Pink").tag("Pink")
-                        }
-
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(activeColor)
-                                .frame(width: 10, height: 10)
-                            Text("Preview for ongoing events")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .padding(16)
-            }
-            .tabItem {
-                Label("Appearance", systemImage: "slider.horizontal.3")
+            aboutTab
+                .tabItem { Label("About", systemImage: "info.circle") }
+                .tag(SettingsTab.about)
+        }
+        .frame(width: 480, height: 450)
+        .onAppear {
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+            if eventManager.accessGranted {
+                eventManager.fetchEvents()
             }
         }
-        .frame(width: 460, height: 320)
-        .onAppear {
-            if eventManager.accessGranted {
+        .onChange(of: selectedTab) { newValue in
+            if newValue == .calendars && eventManager.accessGranted {
                 eventManager.fetchEvents()
             }
         }
     }
 
-    @ViewBuilder
-    private func settingsCard<Content: View>(
-        _ title: String,
-        systemImage: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 10) {
-                content()
+    // MARK: - General Tab
+    private var generalTab: some View {
+        VStack {
+            Form {
+                Section {
+                    Toggle("Launch at Login", isOn: $launchAtLogin)
+                        .onChange(of: launchAtLogin) { _ in updateLaunchAtLogin() }
+                } header: {
+                    Text("System")
+                }
+
+                Section {
+                    Picker("Display Mode", selection: $menuBarDisplayMode) {
+                        Text("None").tag(MenuBarMode.none)
+                        Text("Current Event").tag(MenuBarMode.currentEvent)
+                        Text("Upcoming Event").tag(MenuBarMode.upcomingEvent)
+                    }
+                    .pickerStyle(.menu)
+                    .onChange(of: menuBarDisplayMode) { _ in
+                        eventManager.updateMenuBarTitle()
+                        eventManager.refreshFromSettings()
+                    }
+
+                    Toggle("Show Icon with Text", isOn: $showMenuBarIcon)
+                        .disabled(menuBarDisplayMode == .none)
+                        .onChange(of: showMenuBarIcon) { _ in
+                            eventManager.refreshFromSettings()
+                        }
+                } header: {
+                    Text("Menu Bar")
+                } footer: {
+                    Text("NextUp refreshes every minute to keep your schedule accurate without draining battery.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .foregroundStyle(.secondary)
-                Text(title)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .formStyle(.grouped)
+            
+            Spacer()
+            
+            Button("Quit NextUp") {
+                NSApplication.shared.terminate(nil)
+            }
+            .buttonStyle(.bordered)
+            .keyboardShortcut("q", modifiers: .command)
+            .padding(.bottom, 20)
+        }
+    }
+
+    // MARK: - Appearance Tab
+    private var appearanceTab: some View {
+        Form {
+            Section {
+                HStack {
+                    Text("Character Limit")
+                    Spacer()
+                    Text("\(characterLimit)")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                    
+                    Slider(
+                        value: Binding(
+                            get: { Double(characterLimit) },
+                            set: { characterLimit = Int($0.rounded()) }
+                        ),
+                        in: 5...50,
+                        step: 1
+                    )
+                    .frame(width: 150)
+                    .onChange(of: characterLimit) { _ in
+                        eventManager.updateMenuBarTitle()
+                    }
+                }
+            } header: {
+                Text("Menu Bar Text Truncation")
+            }
+
+            Section {
+                HStack(spacing: 6) {
+                    Image(systemName: "calendar.badge.clock")
+                        .foregroundStyle(.secondary)
+                    Text(previewTitle.isEmpty ? " " : previewTitle)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                )
+            } header: {
+                Text("Live Preview")
             }
         }
+        .formStyle(.grouped)
+    }
+
+    // MARK: - Calendars Tab
+    private var calendarsTab: some View {
+        Form {
+            if !eventManager.accessGranted {
+                UnavailableStateRow(
+                    title: "Access Required",
+                    systemImage: "lock.shield",
+                    message: "Please enable Calendar access in System Settings."
+                )
+            } else if groupedCalendars.isEmpty {
+                UnavailableStateRow(
+                    title: "No Calendars",
+                    systemImage: "calendar.badge.exclamationmark",
+                    message: nil
+                )
+            } else {
+                ForEach(groupedCalendars, id: \.source) { group in
+                    Section {
+                        ForEach(group.calendars, id: \.calendarIdentifier) { calendar in
+                            HStack(spacing: 12) {
+                                Circle()
+                                    .fill(Color(nsColor: calendar.color))
+                                    .frame(width: 10, height: 10)
+
+                                Text(calendar.title)
+                                    .foregroundStyle(.primary)
+
+                                Spacer()
+
+                                Toggle("", isOn: Binding(
+                                    get: { eventManager.isCalendarEnabled(id: calendar.calendarIdentifier) },
+                                    set: { isEnabled in
+                                        if isEnabled != eventManager.isCalendarEnabled(id: calendar.calendarIdentifier) {
+                                            eventManager.toggleCalendar(id: calendar.calendarIdentifier)
+                                        }
+                                    }
+                                ))
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                                .tint(Color(nsColor: .controlAccentColor))
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    } header: {
+                        Text(group.source)
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    // MARK: - About Tab
+    private var aboutTab: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "calendar.badge.clock")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 80, height: 80)
+                .foregroundStyle(Color.accentColor)
+                .padding(.bottom, 8)
+
+            VStack(spacing: 4) {
+                Text("NextUp")
+                    .font(.system(size: 24, weight: .bold))
+                
+                Text(appVersionText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let repositoryURL = URL(string: "https://github.com/Broky64/NextUp") {
+                Link(destination: repositoryURL) {
+                    Label("View on GitHub", systemImage: "link")
+                }
+                .buttonStyle(.link)
+                .padding(.top, 10)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(NSColor.windowBackgroundColor)) 
+    }
+
+    // MARK: - Logic
+    private func updateLaunchAtLogin() {
+        do {
+            if launchAtLogin {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            print("Failed to update Launch at login: \(error.localizedDescription)")
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+        }
+    }
+}
+
+private struct UnavailableStateRow: View {
+    let title: String
+    let systemImage: String
+    let message: String?
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            Text(title)
+                .font(.headline)
+
+            if let message, !message.isEmpty {
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
     }
 }
 

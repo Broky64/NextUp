@@ -10,7 +10,19 @@ enum MenuBarMode: String, CaseIterable {
     case upcomingEvent
 }
 
-class EventManager: ObservableObject {
+enum SettingsKeys {
+    static let showMenuBarIcon = "showMenuBarIcon"
+    static let menuBarDisplayMode = "menuBarDisplayMode"
+    static let menuBarCharacterLimit = "menuBarCharacterLimit"
+    static let daysInAdvance = "daysInAdvance"
+    static let disabledCalendarIDs = "disabledCalendarIDs"
+    static let showAllDayEvents = "showAllDayEvents"
+    static let showPastEvents = "showPastEvents"
+    static let fontSizeOffset = "fontSizeOffset"
+    static let remainingTimeColor = "remainingTimeColor"
+}
+
+final class EventManager: ObservableObject {
     static let shared = EventManager()
     
     private let store = EKEventStore()
@@ -20,7 +32,6 @@ class EventManager: ObservableObject {
     @Published var accessGranted = false
     @Published var menuBarTitle: String = ""
     @Published var currentMinute: Date = Date()
-    @AppStorage("disabledCalendarIDs") var disabledCalendarIDs: String = ""
     
     private var calendar: Calendar { Calendar.current }
     private var timerCancellable: AnyCancellable?
@@ -28,10 +39,15 @@ class EventManager: ObservableObject {
     private var refreshEnabled = true
     private var lastProcessedMinute: Date?
     private var lastKnownDayStart = Calendar.current.startOfDay(for: Date())
+    private var lastEventsFetchAt: Date?
+    private let periodicRefreshInterval: TimeInterval = 15 * 60
+    private var cachedSortedCalendars: [EKCalendar] = []
+    private var isCalendarCacheValid = false
     private var notificationObservers: [NSObjectProtocol] = []
     private var workspaceNotificationObservers: [NSObjectProtocol] = []
     
     private init() {
+        migrateLegacyDisabledCalendarIDsIfNeeded()
         refreshEnabled = shouldRefreshInBackground()
         setupSystemObservers()
         requestAccess()
@@ -46,12 +62,7 @@ class EventManager: ObservableObject {
     }
 
     private var disabledCalendarIDSet: Set<String> {
-        Set(
-            disabledCalendarIDs
-                .split(separator: ",")
-                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-        )
+        Set(UserDefaults.standard.stringArray(forKey: SettingsKeys.disabledCalendarIDs) ?? [])
     }
 
     var enabledCalendars: [EKCalendar] {
@@ -70,8 +81,8 @@ class EventManager: ObservableObject {
     
     private func shouldRefreshInBackground() -> Bool {
         let defaults = UserDefaults.standard
-        let showMenuBarIcon = defaults.object(forKey: "showMenuBarIcon") as? Bool ?? true
-        let rawMode = defaults.string(forKey: "menuBarDisplayMode") ?? MenuBarMode.currentEvent.rawValue
+        let showMenuBarIcon = defaults.object(forKey: SettingsKeys.showMenuBarIcon) as? Bool ?? true
+        let rawMode = defaults.string(forKey: SettingsKeys.menuBarDisplayMode) ?? MenuBarMode.currentEvent.rawValue
         let mode = MenuBarMode(rawValue: rawMode) ?? .currentEvent
         return showMenuBarIcon || mode != .none
     }
@@ -88,7 +99,7 @@ class EventManager: ObservableObject {
             disabled.insert(id)
         }
 
-        disabledCalendarIDs = disabled.sorted().joined(separator: ",")
+        UserDefaults.standard.set(disabled.sorted(), forKey: SettingsKeys.disabledCalendarIDs)
         fetchEvents()
     }
     
@@ -108,6 +119,14 @@ class EventManager: ObservableObject {
         ) { [weak self] _ in
             self?.handleDayChanged()
         }
+
+        let eventStoreChangedObserver = NotificationCenter.default.addObserver(
+            forName: .EKEventStoreChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleEventStoreChanged()
+        }
         
         let wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification,
@@ -117,13 +136,14 @@ class EventManager: ObservableObject {
             self?.handleWakeFromSleep()
         }
         
-        notificationObservers = [timezoneObserver, dayChangedObserver]
+        notificationObservers = [timezoneObserver, dayChangedObserver, eventStoreChangedObserver]
         workspaceNotificationObservers = [wakeObserver]
     }
     
     private func handleTimezoneChange() {
         guard accessGranted else { return }
         store.reset()
+        invalidateCalendarCache()
         lastKnownDayStart = calendar.startOfDay(for: Date())
         lastProcessedMinute = nil
         fetchTodaysEvents(referenceDate: Date())
@@ -138,10 +158,17 @@ class EventManager: ObservableObject {
     private func handleWakeFromSleep() {
         guard accessGranted else { return }
         store.reset()
+        invalidateCalendarCache()
         lastKnownDayStart = calendar.startOfDay(for: Date())
         lastProcessedMinute = nil
         fetchTodaysEvents(referenceDate: Date())
         refreshTimerIfNeeded()
+    }
+
+    private func handleEventStoreChanged() {
+        guard accessGranted else { return }
+        invalidateCalendarCache()
+        fetchTodaysEvents(referenceDate: currentMinute)
     }
     
     private func refreshForDayBoundary(referenceDate: Date) {
@@ -252,7 +279,9 @@ class EventManager: ObservableObject {
         stopTimer()
         availableCalendars = []
         upcomingEvents = []
+        invalidateCalendarCache()
         currentMinute = Date()
+        lastEventsFetchAt = nil
         updateMenuBarTitle()
     }
     
@@ -292,52 +321,47 @@ class EventManager: ObservableObject {
         }
         guard minuteStart != lastProcessedMinute else { return }
         lastProcessedMinute = minuteStart
-        fetchTodaysEvents(referenceDate: minuteStart)
+        currentMinute = minuteStart
+        updateMenuBarTitle(now: minuteStart)
+        
+        if shouldPerformPeriodicRefresh(at: minuteStart) {
+            fetchTodaysEvents(referenceDate: minuteStart)
+        }
     }
     
     func fetchTodaysEvents(referenceDate: Date = Date()) {
         guard accessGranted else { return }
 
-        // EventKit access is local to the system calendar database (no network call here).
-        let allCalendars = store.calendars(for: .event)
-            .sorted { lhs, rhs in
-                let sourceCompare = lhs.source.title.localizedCaseInsensitiveCompare(rhs.source.title)
-                if sourceCompare == .orderedSame {
-                    return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
-                }
-                return sourceCompare == .orderedAscending
-            }
-        availableCalendars = allCalendars
-        let calendars = enabledCalendars
         let now = referenceDate
-        lastKnownDayStart = calendar.startOfDay(for: now)
-        
+        let allCalendars = sortedCalendars()
+        let disabled = disabledCalendarIDSet
+        let calendars = allCalendars.filter { !disabled.contains($0.calendarIdentifier) }
+
         let startOfDay = calendar.startOfDay(for: now)
-        let savedDays = UserDefaults.standard.integer(forKey: "daysInAdvance")
-        let daysInAdvance = savedDays == 0 ? 3 : savedDays
+        let savedDays = UserDefaults.standard.integer(forKey: SettingsKeys.daysInAdvance)
+        let daysInAdvance = max(1, savedDays == 0 ? 3 : savedDays)
         guard let endDate = calendar.date(byAdding: .day, value: daysInAdvance, to: startOfDay) else { return }
 
-        guard !calendars.isEmpty else {
-            DispatchQueue.main.async {
-                self.upcomingEvents = []
-                self.currentMinute = now
-                self.updateMenuBarTitle(now: now)
-            }
-            return
+        let events: [EKEvent]
+        if calendars.isEmpty {
+            events = []
+        } else {
+            let predicate = store.predicateForEvents(withStart: startOfDay, end: endDate, calendars: calendars)
+            events = store.events(matching: predicate)
         }
 
-        let predicate = store.predicateForEvents(withStart: startOfDay, end: endDate, calendars: calendars)
-        let events = store.events(matching: predicate)
-        
-        DispatchQueue.main.async {
-            self.upcomingEvents = events.sorted {
-                if $0.isAllDay && !$1.isAllDay { return true }
-                if !$0.isAllDay && $1.isAllDay { return false }
-                return $0.startDate < $1.startDate
-            }
-            self.currentMinute = now
-            self.updateMenuBarTitle(now: now)
+        let sortedEvents = events.sorted {
+            if $0.isAllDay && !$1.isAllDay { return true }
+            if !$0.isAllDay && $1.isAllDay { return false }
+            return $0.startDate < $1.startDate
         }
+
+        availableCalendars = allCalendars
+        lastKnownDayStart = calendar.startOfDay(for: now)
+        upcomingEvents = sortedEvents
+        currentMinute = now
+        lastEventsFetchAt = now
+        updateMenuBarTitle(now: now)
     }
     
     func fetchEvents() {
@@ -352,9 +376,9 @@ class EventManager: ObservableObject {
     }
     
     func updateMenuBarTitle(now: Date = Date()) {
-        let savedModeString = UserDefaults.standard.string(forKey: "menuBarDisplayMode") ?? MenuBarMode.currentEvent.rawValue
+        let savedModeString = UserDefaults.standard.string(forKey: SettingsKeys.menuBarDisplayMode) ?? MenuBarMode.currentEvent.rawValue
         let mode = MenuBarMode(rawValue: savedModeString) ?? .currentEvent
-        let savedCharacterLimit = UserDefaults.standard.integer(forKey: "menuBarCharacterLimit")
+        let savedCharacterLimit = UserDefaults.standard.integer(forKey: SettingsKeys.menuBarCharacterLimit)
         let characterLimit = savedCharacterLimit == 0 ? 20 : max(5, min(50, savedCharacterLimit))
         
         guard mode != .none else {
@@ -426,5 +450,46 @@ class EventManager: ObservableObject {
         if menuBarTitle != nextTitle {
             menuBarTitle = nextTitle
         }
+    }
+
+    private func shouldPerformPeriodicRefresh(at now: Date) -> Bool {
+        guard let lastEventsFetchAt else { return true }
+        return now.timeIntervalSince(lastEventsFetchAt) >= periodicRefreshInterval
+    }
+
+    private func migrateLegacyDisabledCalendarIDsIfNeeded() {
+        let defaults = UserDefaults.standard
+        if let legacyValue = defaults.string(forKey: SettingsKeys.disabledCalendarIDs),
+           !legacyValue.isEmpty {
+            let migrated = legacyValue
+                .split(separator: ",")
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            defaults.set(migrated, forKey: SettingsKeys.disabledCalendarIDs)
+        }
+    }
+
+    private func sortedCalendars() -> [EKCalendar] {
+        if isCalendarCacheValid {
+            return cachedSortedCalendars
+        }
+
+        let calendars = store.calendars(for: .event)
+            .sorted { lhs, rhs in
+                let sourceCompare = lhs.source.title.localizedCaseInsensitiveCompare(rhs.source.title)
+                if sourceCompare == .orderedSame {
+                    return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+                }
+                return sourceCompare == .orderedAscending
+            }
+
+        cachedSortedCalendars = calendars
+        isCalendarCacheValid = true
+        return calendars
+    }
+
+    private func invalidateCalendarCache() {
+        cachedSortedCalendars = []
+        isCalendarCacheValid = false
     }
 }

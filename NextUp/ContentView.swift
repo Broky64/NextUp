@@ -1,62 +1,62 @@
 import SwiftUI
 import EventKit
-import Combine
+import AppKit
 
 struct EventGroup: Identifiable {
-    let id = UUID()
+    let day: Date
     let title: String
     let events: [EKEvent]
+    var id: Date { day }
 }
 
 struct ContentView: View {
     @ObservedObject var eventManager: EventManager
-    @Environment(\.openSettings) private var openSettings
-    private let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     
-    @AppStorage("showAllDayEvents") private var showAllDayEvents = true
-    @AppStorage("showPastEvents") private var showPastEvents = true
-    @AppStorage("fontSizeOffset") private var fontSizeOffset: Double = 0.0
+    @AppStorage(SettingsKeys.showAllDayEvents) private var showAllDayEvents = true
+    @AppStorage(SettingsKeys.showPastEvents) private var showPastEvents = true
+    @AppStorage(SettingsKeys.fontSizeOffset) private var fontSizeOffset: Double = 0.0
+
+    private static let sectionFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "E MMM d"
+        return formatter
+    }()
     
     var groupedEvents: [EventGroup] {
         let now = eventManager.currentMinute
         let calendar = Calendar.current
-        
-        var today: [EKEvent] = []
-        var tomorrow: [EKEvent] = []
-        var laterGroups: [Date: [EKEvent]] = [:]
+        var groupedByDay: [Date: [EKEvent]] = [:]
         
         for event in eventManager.upcomingEvents {
             if !showAllDayEvents && event.isAllDay { continue }
-            if !showPastEvents && !event.isAllDay && event.endDate < now { continue }
+            if !showPastEvents && !event.isAllDay && event.endDate <= now { continue }
             
-            let startOfDay = calendar.startOfDay(for: event.startDate)
-            if calendar.isDateInToday(event.startDate) {
-                today.append(event)
-            } else if calendar.isDateInTomorrow(event.startDate) {
-                tomorrow.append(event)
+            let effectiveDate: Date
+            if event.startDate < now, event.endDate > now {
+                // Keep spanning events visible in today's group while active.
+                effectiveDate = now
             } else {
-                laterGroups[startOfDay, default: []].append(event)
+                effectiveDate = event.startDate
             }
+            
+            let day = calendar.startOfDay(for: effectiveDate)
+            groupedByDay[day, default: []].append(event)
         }
         
-        var result: [EventGroup] = []
-        if !today.isEmpty {
-            result.append(EventGroup(title: "TODAY", events: today))
+        return groupedByDay.keys.sorted().map { day in
+            let title: String
+            if calendar.isDateInToday(day) {
+                title = "TODAY"
+            } else if calendar.isDateInTomorrow(day) {
+                title = "TOMORROW"
+            } else {
+                title = Self.sectionFormatter.string(from: day).uppercased()
+            }
+            
+            let events = (groupedByDay[day] ?? []).sorted { $0.startDate < $1.startDate }
+            return EventGroup(day: day, title: title, events: events)
         }
-        if !tomorrow.isEmpty {
-            result.append(EventGroup(title: "TOMORROW", events: tomorrow))
-        }
-        
-        for key in laterGroups.keys.sorted() {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "E MMM d"
-            result.append(EventGroup(title: formatter.string(from: key).uppercased(), events: laterGroups[key]!))
-        }
-        
-        return result
     }
-    
-    
 
     var body: some View {
         VStack(spacing: 0) {
@@ -85,7 +85,7 @@ struct ContentView: View {
                                     .padding(.horizontal, 12)
                                     .padding(.top, 2)
                                 
-                                ForEach(group.events, id: \.eventIdentifier) { event in
+                                ForEach(group.events, id: \.calendarItemIdentifier) { event in
                                     EventRowView(
                                         event: event,
                                         fontSizeOffset: fontSizeOffset,
@@ -107,22 +107,7 @@ struct ContentView: View {
                 Divider()
                     .padding(.bottom, 2)
                 
-                Button {
-                    NSApp.activate(ignoringOtherApps: true)
-                    openSettings()
-                } label: {
-                    HStack {
-                        Text("Settings")
-                        Spacer()
-                        Text("⌘,").foregroundColor(.secondary).font(.system(size: 11))
-                    }
-                    .font(.system(size: 12 + fontSizeOffset) )
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 3)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut(",", modifiers: .command)
+                settingsButton
                 
                 Button {
                     NSApplication.shared.terminate(nil)
@@ -143,9 +128,69 @@ struct ContentView: View {
             .padding(.bottom, 2)
         }
         .frame(width: 300)
-        .onReceive(timer) { date in
-            eventManager.handleMinuteTick(date)
+        .onAppear { eventManager.handleMinuteTick() }
+    }
+
+    @ViewBuilder
+    private var settingsButton: some View {
+        if #available(macOS 14.0, *) {
+            SettingsLink {
+                settingsButtonLabel
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(",", modifiers: .command)
+        } else {
+            Button {
+                openLegacySettingsWindow()
+            } label: {
+                settingsButtonLabel
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(",", modifiers: .command)
         }
+    }
+
+    private var settingsButtonLabel: some View {
+        HStack {
+            Text("Settings")
+            Spacer()
+            Text("⌘,").foregroundColor(.secondary).font(.system(size: 11))
+        }
+        .font(.system(size: 12 + fontSizeOffset) )
+        .padding(.horizontal, 12)
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+    }
+
+    private func openLegacySettingsWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        SettingsWindowController.shared.show()
+    }
+}
+
+@MainActor
+private final class SettingsWindowController {
+    static let shared = SettingsWindowController()
+
+    private var window: NSWindow?
+
+    func show() {
+        if window == nil {
+            let rootView = SettingsView()
+            let hostingController = NSHostingController(rootView: rootView)
+
+            let settingsWindow = NSWindow(contentViewController: hostingController)
+            settingsWindow.title = "Settings"
+            settingsWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            settingsWindow.setContentSize(NSSize(width: 480, height: 450))
+            settingsWindow.isReleasedWhenClosed = false
+            settingsWindow.center()
+            settingsWindow.setFrameAutosaveName("NextUpSettingsWindow")
+
+            window = settingsWindow
+        }
+
+        window?.makeKeyAndOrderFront(nil)
     }
 }
 
@@ -187,8 +232,13 @@ struct EventRowView: View {
     let currentMinute: Date
     let openEvent: (EKEvent) -> Void
     
-    @AppStorage("remainingTimeColor") private var remainingTimeColor: String = "Orange"
+    @AppStorage(SettingsKeys.remainingTimeColor) private var remainingTimeColor: String = "Orange"
     @State private var isHovering = false
+
+    private var displayTitle: String {
+        let title = (event.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? "Untitled event" : title
+    }
     
     var activeColor: Color {
         switch remainingTimeColor {
@@ -250,7 +300,7 @@ struct EventRowView: View {
                     .foregroundColor(.secondary.opacity(0.5))
                     .font(.system(size: 12 + fontSizeOffset, weight: .bold))
                     
-                Text(event.title)
+                Text(displayTitle)
                     .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .rounded))
                     .foregroundColor(isPast ? .secondary.opacity(0.6) : .primary)
                     .lineLimit(1)

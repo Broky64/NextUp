@@ -68,4 +68,4 @@ If you discover a vulnerability, please follow [SECURITY.md](SECURITY.md) for re
 
 ## License
 
-NextUp is released under the [MIT License](LICENSE).
+NextUp is released under the [GNU GPL v3](LICENSE).

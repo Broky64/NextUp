@@ -68,7 +68,17 @@ struct SettingsView: View {
                 .tag(SettingsTab.calendars)
 
             aboutTab
-                .tabItem { Label("About", systemImage: "info.circle") }
+                .tabItem {
+                    Label {
+                        Text("About")
+                    } icon: {
+                        Image("AboutAppIcon")
+                            .renderingMode(.original)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 16, height: 16)
+                    }
+                }
                 .tag(SettingsTab.about)
         }
         .frame(width: 480, height: 450)
@@ -240,11 +250,10 @@ struct SettingsView: View {
     // MARK: - About Tab
     private var aboutTab: some View {
         VStack(spacing: 16) {
-            Image(systemName: "calendar.badge.clock")
+            Image("AboutAppIcon")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 80, height: 80)
-                .foregroundStyle(Color.accentColor)
                 .padding(.bottom, 8)
 
             VStack(spacing: 4) {

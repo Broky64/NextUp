@@ -2,6 +2,7 @@ import Foundation
 import EventKit
 import Combine
 import AppKit
+import SwiftUI
 
 enum MenuBarMode: String, CaseIterable {
     case none
@@ -15,9 +16,11 @@ class EventManager: ObservableObject {
     private let store = EKEventStore()
     
     @Published var upcomingEvents: [EKEvent] = []
+    @Published var availableCalendars: [EKCalendar] = []
     @Published var accessGranted = false
     @Published var menuBarTitle: String = ""
     @Published var currentMinute: Date = Date()
+    @AppStorage("disabledCalendarIDs") var disabledCalendarIDs: String = ""
     
     private let calendar = Calendar.current
     private var timerCancellable: AnyCancellable?
@@ -28,6 +31,20 @@ class EventManager: ObservableObject {
     private init() {
         refreshEnabled = shouldRefreshInBackground()
         requestAccess()
+    }
+
+    private var disabledCalendarIDSet: Set<String> {
+        Set(
+            disabledCalendarIDs
+                .split(separator: ",")
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        )
+    }
+
+    var enabledCalendars: [EKCalendar] {
+        let disabled = disabledCalendarIDSet
+        return availableCalendars.filter { !disabled.contains($0.calendarIdentifier) }
     }
     
     func setRefreshEnabled(_ enabled: Bool) {
@@ -45,6 +62,22 @@ class EventManager: ObservableObject {
         let rawMode = defaults.string(forKey: "menuBarDisplayMode") ?? MenuBarMode.currentEvent.rawValue
         let mode = MenuBarMode(rawValue: rawMode) ?? .currentEvent
         return showMenuBarIcon || mode != .none
+    }
+
+    func isCalendarEnabled(id: String) -> Bool {
+        !disabledCalendarIDSet.contains(id)
+    }
+
+    func toggleCalendar(id: String) {
+        var disabled = disabledCalendarIDSet
+        if disabled.contains(id) {
+            disabled.remove(id)
+        } else {
+            disabled.insert(id)
+        }
+
+        disabledCalendarIDs = disabled.sorted().joined(separator: ",")
+        fetchEvents()
     }
     
     private func startTimer() {
@@ -145,6 +178,7 @@ class EventManager: ObservableObject {
         }
         
         stopTimer()
+        availableCalendars = []
         upcomingEvents = []
         currentMinute = Date()
         updateMenuBarTitle()
@@ -168,14 +202,32 @@ class EventManager: ObservableObject {
         guard accessGranted else { return }
 
         // EventKit access is local to the system calendar database (no network call here).
-        let calendars = store.calendars(for: .event)
+        let allCalendars = store.calendars(for: .event)
+            .sorted { lhs, rhs in
+                let sourceCompare = lhs.source.title.localizedCaseInsensitiveCompare(rhs.source.title)
+                if sourceCompare == .orderedSame {
+                    return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+                }
+                return sourceCompare == .orderedAscending
+            }
+        availableCalendars = allCalendars
+        let calendars = enabledCalendars
         let now = referenceDate
         
         let startOfDay = calendar.startOfDay(for: now)
         let savedDays = UserDefaults.standard.integer(forKey: "daysInAdvance")
         let daysInAdvance = savedDays == 0 ? 3 : savedDays
         guard let endDate = calendar.date(byAdding: .day, value: daysInAdvance, to: startOfDay) else { return }
-        
+
+        guard !calendars.isEmpty else {
+            DispatchQueue.main.async {
+                self.upcomingEvents = []
+                self.currentMinute = now
+                self.updateMenuBarTitle(now: now)
+            }
+            return
+        }
+
         let predicate = store.predicateForEvents(withStart: startOfDay, end: endDate, calendars: calendars)
         let events = store.events(matching: predicate)
         

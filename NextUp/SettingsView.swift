@@ -1,7 +1,9 @@
 import SwiftUI
 import ServiceManagement
+import EventKit
 
 struct SettingsView: View {
+    @ObservedObject private var eventManager = EventManager.shared
     @AppStorage("showAllDayEvents") private var showAllDayEvents = true
     @AppStorage("showPastEvents") private var showPastEvents = true
     @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
@@ -75,6 +77,49 @@ struct SettingsView: View {
                             EventManager.shared.fetchEvents()
                         }
                     }
+                    
+                    settingsCard("Visible Calendars", systemImage: "list.bullet.rectangle") {
+                        if !eventManager.accessGranted {
+                            Text("Calendar access is required to choose visible calendars.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        } else if eventManager.availableCalendars.isEmpty {
+                            Text("No calendars found.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        } else {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(eventManager.availableCalendars, id: \.calendarIdentifier) { calendar in
+                                    Toggle(
+                                        isOn: Binding(
+                                            get: {
+                                                eventManager.isCalendarEnabled(id: calendar.calendarIdentifier)
+                                            },
+                                            set: { isEnabled in
+                                                let currentlyEnabled = eventManager.isCalendarEnabled(id: calendar.calendarIdentifier)
+                                                guard isEnabled != currentlyEnabled else { return }
+                                                eventManager.toggleCalendar(id: calendar.calendarIdentifier)
+                                            }
+                                        )
+                                    ) {
+                                        HStack(spacing: 8) {
+                                            Circle()
+                                                .fill(Color(nsColor: calendar.color))
+                                                .frame(width: 8, height: 8)
+                                            
+                                            VStack(alignment: .leading, spacing: 1) {
+                                                Text(calendar.title)
+                                                Text(calendar.source.title)
+                                                    .font(.system(size: 11))
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+                                    }
+                                    .toggleStyle(.switch)
+                                }
+                            }
+                        }
+                    }
 
                     settingsCard("Startup", systemImage: "power") {
                         Toggle("Launch at login", isOn: $launchAtLogin)
@@ -142,6 +187,11 @@ struct SettingsView: View {
             }
         }
         .frame(width: 460, height: 320)
+        .onAppear {
+            if eventManager.accessGranted {
+                eventManager.fetchEvents()
+            }
+        }
     }
 
     @ViewBuilder

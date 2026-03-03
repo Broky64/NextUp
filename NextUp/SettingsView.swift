@@ -1,3 +1,6 @@
+/// `SettingsView.swift` belongs to the View layer in MVVM.
+/// It provides configuration screens that read and mutate `EventManager`
+/// and persisted user preferences.
 import SwiftUI
 import ServiceManagement
 import EventKit
@@ -10,6 +13,7 @@ private enum SettingsTab: Hashable {
     case about
 }
 
+/// Multi-tab settings interface for system, appearance, calendar, and project metadata.
 struct SettingsView: View {
     @ObservedObject private var eventManager = EventManager.shared
     @AppStorage(SettingsKeys.showMenuBarIcon) private var showMenuBarIcon = true
@@ -45,6 +49,10 @@ struct SettingsView: View {
         return "Version \(version) (Build \(build))"
     }
 
+    /// Builds the full tabbed settings window content.
+    ///
+    /// - Returns: A tab-based SwiftUI interface used by the app settings scene.
+    /// - Note: Changing certain controls updates `UserDefaults`, can refetch events, and may register login items.
     var body: some View {
         TabView(selection: $selectedTab) {
             generalTab

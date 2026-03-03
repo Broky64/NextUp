@@ -1,15 +1,25 @@
+/// `ContentView.swift` belongs to the View layer in MVVM.
+/// It renders the menu bar popover UI from `EventManager` state and
+/// routes user interactions back to the view model.
 import SwiftUI
 import EventKit
 import AppKit
 
+/// Represents events grouped by day for sectioned popover rendering.
 struct EventGroup: Identifiable {
+    /// The calendar day used as the group identity.
     let day: Date
+    /// Localized uppercase header displayed for the day section.
     let title: String
+    /// Events that belong to the section day.
     let events: [EKEvent]
+    /// Stable identifier used by SwiftUI list diffing.
     var id: Date { day }
 }
 
+/// Main popover view displayed from the menu bar extra.
 struct ContentView: View {
+    /// Shared event view model injected from the app entry point.
     @ObservedObject var eventManager: EventManager
     
     @AppStorage(SettingsKeys.showAllDayEvents) private var showAllDayEvents = true
@@ -22,6 +32,7 @@ struct ContentView: View {
         return formatter
     }()
     
+    /// Groups filtered events into day-based sections for display.
     var groupedEvents: [EventGroup] {
         let now = eventManager.currentMinute
         let calendar = Calendar.current
@@ -58,6 +69,10 @@ struct ContentView: View {
         }
     }
 
+    /// Builds the popover interface for permissions, events, and quick actions.
+    ///
+    /// - Returns: A SwiftUI view tree sized for menu bar popover presentation.
+    /// - Note: Renders from published `EventManager` state and updates automatically on minute ticks.
     var body: some View {
         VStack(spacing: 0) {
             if !eventManager.accessGranted {
@@ -195,9 +210,15 @@ private final class SettingsWindowController {
 }
 
 struct AccessDeniedView: View {
+    /// Additional text scaling used to match global appearance preferences.
     let fontSizeOffset: Double
+    /// Callback that opens Calendar privacy settings when permission is missing.
     let openSystemSettings: () -> Void
     
+    /// Builds the permission-required state shown when calendar access is denied.
+    ///
+    /// - Returns: A centered call-to-action view guiding users to System Settings.
+    /// - Note: Triggering the action opens macOS settings outside the app.
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: "exclamationmark.lock.fill")
@@ -227,9 +248,13 @@ struct AccessDeniedView: View {
 }
 
 struct EventRowView: View {
+    /// Event represented by the current row.
     let event: EKEvent
+    /// Additional text scaling used to match user appearance preferences.
     let fontSizeOffset: Double
+    /// Minute-aligned current timestamp used for active/past state calculations.
     let currentMinute: Date
+    /// Callback invoked when the row is selected.
     let openEvent: (EKEvent) -> Void
     
     @AppStorage(SettingsKeys.remainingTimeColor) private var remainingTimeColor: String = "Orange"
@@ -240,6 +265,7 @@ struct EventRowView: View {
         return title.isEmpty ? "Untitled event" : title
     }
     
+    /// Accent color used for active-event remaining time text.
     var activeColor: Color {
         switch remainingTimeColor {
         case "Blue": return .blue
@@ -257,6 +283,10 @@ struct EventRowView: View {
         return max(0, Int((Double(seconds) / 60.0).rounded()))
     }
     
+    /// Builds a single interactive event row with timing and title metadata.
+    ///
+    /// - Returns: A hoverable button row that opens the selected event in Calendar.
+    /// - Note: Invokes `openEvent` on tap, which can close the popover and launch Calendar.
     var body: some View {
         let now = currentMinute
         let isPast = !event.isAllDay && event.endDate < now

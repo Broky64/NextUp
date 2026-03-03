@@ -1,36 +1,95 @@
 # Contributing to NextUp
 
-First off, thank you for considering contributing to NextUp! It's people like you that make NextUp such a great tool.
+Thanks for contributing to NextUp. This document defines the expected workflow and engineering standards for pull requests.
 
-## Where do I go from here?
+## Development Environment
 
-If you've noticed a bug or have a request for a feature, please [open an issue](https://github.com/yourusername/NextUp/issues). If you'd like to dive into the codebase and make a change yourself, keep reading.
+Required:
 
-## Fork & create a branch
+- macOS (current major release recommended)
+- Xcode 15+
+- Swift 5.9+
+- Git
 
-If this is your first time contributing to a GitHub project, the workflow is roughly:
+Optional but recommended:
 
-1. **Fork** the repository on GitHub.
-2. **Clone** your fork locally.
-3. **Commit** your changes to your own branch.
-4. **Push** your branch back up to your fork.
-5. Submit a **Pull Request** so we can review your changes.
+- [SwiftLint](https://github.com/realm/SwiftLint) for style and static checks
 
-NOTE: Be sure to fetch the latest from the "upstream" repository before making a pull request!
+## Project Setup
 
-## Before making a pull request
+1. Fork this repository.
+2. Clone your fork locally:
+   ```bash
+   git clone https://github.com/<your-username>/NextUp.git
+   cd NextUp
+   ```
+3. Open `NextUp.xcodeproj` in Xcode.
+4. Select the `NextUp` scheme and run (`⌘R`).
+5. Grant Calendar permission when prompted.
 
-*   Test your changes. Make sure that they don't break the existing menu bar functionality.
-*   Update the `README.md` with any new features you introduce or changes to behavior.
-*   Make sure your code matches the existing style.
+## Branching and Commits
 
-## Code of Conduct
+- Create focused branches from `main`.
+- Use clear branch names, for example: `feature/calendar-search` or `fix/menu-title-truncation`.
+- Keep commits atomic and descriptive.
+- Prefer imperative commit subjects (example: `Fix menu title fallback for active events`).
 
-Please note that this project is released with a Contributor Code of Conduct. By participating in this project you agree to abide by its terms.
+## Coding Standards
 
-## Thank You
+- Follow Swift API Design Guidelines.
+- Keep MVVM boundaries explicit:
+  - `EventManager.swift`: state, permissions, EventKit coordination (ViewModel).
+  - `ContentView.swift` / `SettingsView.swift`: rendering and user interaction (View).
+- Avoid force-unwrapping unless there is a strict invariant with justification.
+- Prefer small, testable methods and deterministic state transitions.
+- Add or update DocC comments (`///`) for public and internal symbols when behavior changes.
 
-Thank you so much for contributing to the NextUp app.
-Your help makes open source awesome!
+## Linting
 
-- LaBroc
+Install SwiftLint (optional but strongly recommended):
+
+```bash
+brew install swiftlint
+```
+
+Run lint checks from repository root:
+
+```bash
+swiftlint
+```
+
+If no custom `.swiftlint.yml` is present, SwiftLint default rules apply.
+
+## Validation Before Opening a PR
+
+At minimum:
+
+1. Build the app in Xcode with no errors.
+2. Manually verify permission flow:
+   - first launch permission prompt
+   - denied permission state
+   - reopening settings from the app
+3. Verify menu bar updates:
+   - current/upcoming mode changes
+   - countdown updates each minute
+   - calendar filtering behavior
+4. Re-run lint checks if SwiftLint is installed.
+
+## Pull Request Expectations
+
+Include the following in your PR description:
+
+- Problem statement
+- Scope of changes
+- Manual verification steps
+- Screenshots or short recordings for UI changes
+- Related issue (if applicable)
+
+Small, focused pull requests are reviewed faster than large mixed changes.
+
+## Reporting Bugs and Feature Requests
+
+- Bugs: open an issue with reproduction steps, expected behavior, and actual behavior.
+- Features: open an issue describing the use case and proposed UX.
+
+Use GitHub Issues: [https://github.com/Broky64/NextUp/issues](https://github.com/Broky64/NextUp/issues)

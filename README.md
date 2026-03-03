@@ -1,39 +1,61 @@
 # NextUp
 
-NextUp is a sleek, macOS Menu Bar calendar application designed to keep your upcoming events front and center. Inspired by the Notion Calendar design language, it offers a fast, accessible, and beautiful way to manage your schedule directly from your menu bar.
+NextUp is a native macOS menu bar calendar companion designed around a clean, Notion Calendar-inspired aesthetic: compact typography, clear time hierarchy, and immediate context for what is happening now and what is next.
 
-## 🌟 Features
-*   **Menu Bar Integration:** Dynamically displays your current or upcoming event directly in the macOS menu bar.
-*   **Notion-Like Design:** A beautiful dark theme with vertical colored event bars, monospaced times, and a highly polished UI.
-*   **Event Grouping:** Shows events properly grouped into categories like "Ending Soon", "Today", "Tomorrow", and full dates for the next three days.
-*   **Customizable Settings:** Easily configure the app to suit your needs, including adjusting how far in advance you want to see events.
-*   **Lightweight & Fast:** Optimized for minimal resource consumption so it simply works in the background without draining your battery.
+The app stays in the menu bar, keeps your upcoming schedule visible at a glance, and opens events directly in Apple Calendar when needed.
 
-## 🚀 Installation 
+## Key Features
 
-*(Instructions will be added once a release is available)*
+- **Live countdown for active events**: displays remaining time (for example, `18m left`) and updates every minute.
+- **Dynamic menu bar title**: shows either the current event or the upcoming event depending on user preference.
+- **Calendar filtering**: enable or disable individual calendars from settings without changing Apple Calendar itself.
+- **Fast grouped popover**: events are grouped by day (`TODAY`, `TOMORROW`, and date sections).
+- **Menu bar customization**: control icon visibility and character limit for compact titles.
 
-For now, you can clone and build the app via Xcode:
+## Installation
 
-1. Clone the repository: `git clone https://github.com/yourusername/NextUp.git`
+### Option 1: Download a Release
+
+1. Open the [Releases](https://github.com/Broky64/NextUp/releases) page.
+2. Download the latest packaged build.
+3. Move `NextUp.app` to `/Applications`.
+4. Launch the app and grant Calendar permission when prompted.
+
+### Option 2: Build from Source
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Broky64/NextUp.git
+   cd NextUp
+   ```
 2. Open `NextUp.xcodeproj` in Xcode.
-3. Build and Run!
+3. Select the `NextUp` scheme.
+4. Build and run (`⌘R`).
+5. Grant Calendar permission in macOS when requested.
 
-## 📸 Screenshots
+## Privacy
 
-*(Screenshots coming soon!)*
+NextUp is privacy-first by design:
 
-## 🤝 Contributing
+- Calendar data is accessed through Apple's `EventKit` framework.
+- Event data is processed locally on your Mac.
+- No analytics, tracking, or remote event synchronization is built into the app.
+- User preferences are stored locally in `UserDefaults`.
 
-Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make to NextUp are **greatly appreciated**.
+This local-only model aligns well with GDPR and general privacy-by-default principles.
 
-Please see our [CONTRIBUTING.md](CONTRIBUTING.md) file for details on how to get started.
+## Contributing
 
-## 📝 License
+Contributions are welcome.
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. This means you are free to use, modify, and distribute this software, provided you include the original copyright notice and attribute the work to **LaBroc**.
+- Open a bug report or feature request in [GitHub Issues](https://github.com/Broky64/NextUp/issues).
+- Submit improvements through a pull request from your fork.
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
 
-## 📬 Contact
+## Security
 
-Project created by **LaBroc**.
-If you have any questions or feedback, feel free to open an issue or reach out!
+If you discover a vulnerability, please follow [SECURITY.md](SECURITY.md) for responsible disclosure.
+
+## License
+
+NextUp is released under the [MIT License](LICENSE).

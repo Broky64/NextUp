@@ -1,36 +1,60 @@
+/// `EventManager.swift` is the ViewModel layer in MVVM.
+/// It owns calendar permissions, event fetching, filtering, and state
+/// published to SwiftUI views.
 import Foundation
 import EventKit
 import Combine
 import AppKit
 import SwiftUI
 
+/// Controls which event context is shown in the menu bar title.
 enum MenuBarMode: String, CaseIterable {
+    /// Hides all title text and only shows the icon when configured.
     case none
+    /// Prioritizes the currently running event and falls back to the next event.
     case currentEvent
+    /// Prioritizes the next event and falls back to the currently running event.
     case upcomingEvent
 }
 
+/// Defines `UserDefaults` keys used by NextUp settings.
 enum SettingsKeys {
+    /// Persists whether the menu bar icon is visible when text is also shown.
     static let showMenuBarIcon = "showMenuBarIcon"
+    /// Persists the selected menu bar display mode.
     static let menuBarDisplayMode = "menuBarDisplayMode"
+    /// Persists the title truncation limit for menu bar text.
     static let menuBarCharacterLimit = "menuBarCharacterLimit"
+    /// Persists how many days ahead the app should query events.
     static let daysInAdvance = "daysInAdvance"
+    /// Persists calendar identifiers excluded from event results.
     static let disabledCalendarIDs = "disabledCalendarIDs"
+    /// Persists whether all-day events are visible in the menu content.
     static let showAllDayEvents = "showAllDayEvents"
+    /// Persists whether past events are visible in the menu content.
     static let showPastEvents = "showPastEvents"
+    /// Persists the user-selected text scaling offset.
     static let fontSizeOffset = "fontSizeOffset"
+    /// Persists the color preset for active event remaining-time text.
     static let remainingTimeColor = "remainingTimeColor"
 }
 
+/// Central view model that synchronizes EventKit data with menu bar UI state.
 final class EventManager: ObservableObject {
+    /// Shared singleton used by the app and settings scenes.
     static let shared = EventManager()
     
     private let store = EKEventStore()
     
+    /// Ordered list of fetched events shown in the popover UI.
     @Published var upcomingEvents: [EKEvent] = []
+    /// Full list of calendars available from EventKit, regardless of filtering.
     @Published var availableCalendars: [EKCalendar] = []
+    /// Indicates whether calendar read access is currently granted.
     @Published var accessGranted = false
+    /// Current text rendered in the menu bar label.
     @Published var menuBarTitle: String = ""
+    /// Current minute-aligned timestamp used to drive countdown calculations.
     @Published var currentMinute: Date = Date()
     
     private var calendar: Calendar { Calendar.current }
@@ -65,16 +89,28 @@ final class EventManager: ObservableObject {
         Set(UserDefaults.standard.stringArray(forKey: SettingsKeys.disabledCalendarIDs) ?? [])
     }
 
+    /// Calendars included in event queries after applying disabled-calendar settings.
     var enabledCalendars: [EKCalendar] {
         let disabled = disabledCalendarIDSet
         return availableCalendars.filter { !disabled.contains($0.calendarIdentifier) }
     }
     
+    /// Enables or disables background refresh scheduling.
+    ///
+    /// - Parameters:
+    ///   - enabled: `true` to keep minute-based refresh active, `false` to stop it.
+    /// - Returns: `Void`.
+    /// - Note: Stopping refresh pauses timer-driven menu bar updates until re-enabled.
     func setRefreshEnabled(_ enabled: Bool) {
         refreshEnabled = enabled
         refreshTimerIfNeeded()
     }
     
+    /// Recomputes refresh behavior from persisted menu bar settings.
+    ///
+    /// - Parameters: None.
+    /// - Returns: `Void`.
+    /// - Note: This may start or stop active timers, which changes update frequency and battery usage.
     func refreshFromSettings() {
         setRefreshEnabled(shouldRefreshInBackground())
     }
@@ -87,10 +123,22 @@ final class EventManager: ObservableObject {
         return showMenuBarIcon || mode != .none
     }
 
+    /// Checks whether a calendar is currently included in filtering.
+    ///
+    /// - Parameters:
+    ///   - id: The EventKit calendar identifier to query.
+    /// - Returns: `true` when the calendar is enabled, otherwise `false`.
+    /// - Note: This reads persisted settings and does not trigger any refresh by itself.
     func isCalendarEnabled(id: String) -> Bool {
         !disabledCalendarIDSet.contains(id)
     }
 
+    /// Toggles a calendar between enabled and disabled states.
+    ///
+    /// - Parameters:
+    ///   - id: The EventKit calendar identifier to update.
+    /// - Returns: `Void`.
+    /// - Note: Persists settings and immediately refetches events, which can refresh visible UI.
     func toggleCalendar(id: String) {
         var disabled = disabledCalendarIDSet
         if disabled.contains(id) {
@@ -229,6 +277,11 @@ final class EventManager: ObservableObject {
         alignToNextMinuteThenStartTimer()
     }
     
+    /// Requests calendar authorization and updates local state from the result.
+    ///
+    /// - Parameters: None.
+    /// - Returns: `Void`.
+    /// - Warning: May present a system permission prompt and asynchronously mutate published properties.
     func requestAccess() {
         let status = EKEventStore.authorizationStatus(for: .event)
         
@@ -285,6 +338,11 @@ final class EventManager: ObservableObject {
         updateMenuBarTitle()
     }
     
+    /// Opens macOS System Settings directly to Calendar privacy permissions.
+    ///
+    /// - Parameters: None.
+    /// - Returns: `Void`.
+    /// - Note: Launches an external system URL and shifts focus away from the app.
     func openSystemSettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendar") else {
             return
@@ -292,6 +350,12 @@ final class EventManager: ObservableObject {
         NSWorkspace.shared.open(url)
     }
     
+    /// Opens a calendar event in the Calendar app using a deep link or timestamp fallback.
+    ///
+    /// - Parameters:
+    ///   - event: The event to open in Calendar.
+    /// - Returns: `Void`.
+    /// - Note: Closes the menu popover and launches Calendar, which changes app focus.
     func openEventInCalendar(event: EKEvent) {
         closeMenuBarPopoverIfNeeded()
         
@@ -312,6 +376,12 @@ final class EventManager: ObservableObject {
         NSApp.keyWindow?.performClose(nil)
     }
     
+    /// Handles minute-aligned ticks used for countdown updates and periodic refetching.
+    ///
+    /// - Parameters:
+    ///   - date: The timestamp to process, defaulting to the current time.
+    /// - Returns: `Void`.
+    /// - Note: Updates published state and can trigger event refetching, causing visible UI refreshes.
     func handleMinuteTick(_ date: Date = Date()) {
         let minuteStart = calendar.dateInterval(of: .minute, for: date)?.start ?? date
         let dayStart = calendar.startOfDay(for: minuteStart)
@@ -329,6 +399,12 @@ final class EventManager: ObservableObject {
         }
     }
     
+    /// Fetches events for the configured date window and updates observable state.
+    ///
+    /// - Parameters:
+    ///   - referenceDate: The anchor date used to calculate today and the fetch range.
+    /// - Returns: `Void`.
+    /// - Note: Reads EventKit, updates published collections, and refreshes menu bar title text.
     func fetchTodaysEvents(referenceDate: Date = Date()) {
         guard accessGranted else { return }
 
@@ -364,10 +440,22 @@ final class EventManager: ObservableObject {
         updateMenuBarTitle(now: now)
     }
     
+    /// Convenience wrapper that refetches events using the current date.
+    ///
+    /// - Parameters: None.
+    /// - Returns: `Void`.
+    /// - Note: Equivalent to calling `fetchTodaysEvents(referenceDate:)` with `Date()`.
     func fetchEvents() {
         fetchTodaysEvents(referenceDate: Date())
     }
     
+    /// Truncates menu bar titles to a safe character limit.
+    ///
+    /// - Parameters:
+    ///   - title: The original title string to display.
+    ///   - limit: The maximum character count before appending an ellipsis.
+    /// - Returns: A title shortened to the configured limit, or an empty string when the limit is zero.
+    /// - Note: Pure formatting logic; it does not mutate view model state directly.
     func truncateTitle(_ title: String, limit: Int) -> String {
         let safeLimit = max(0, limit)
         guard safeLimit > 0 else { return "" }
@@ -375,6 +463,12 @@ final class EventManager: ObservableObject {
         return String(title.prefix(safeLimit)) + "..."
     }
     
+    /// Recomputes the menu bar title from mode, time context, and event data.
+    ///
+    /// - Parameters:
+    ///   - now: The reference time used for active/upcoming event calculations.
+    /// - Returns: `Void`.
+    /// - Note: Mutates `menuBarTitle`, which triggers a menu bar label update in SwiftUI.
     func updateMenuBarTitle(now: Date = Date()) {
         let savedModeString = UserDefaults.standard.string(forKey: SettingsKeys.menuBarDisplayMode) ?? MenuBarMode.currentEvent.rawValue
         let mode = MenuBarMode(rawValue: savedModeString) ?? .currentEvent

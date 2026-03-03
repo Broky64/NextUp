@@ -12,6 +12,16 @@ The app stays in the menu bar, keeps your upcoming schedule visible at a glance,
 - **Fast grouped popover**: events are grouped by day (`TODAY`, `TOMORROW`, and date sections).
 - **Menu bar customization**: control icon visibility and character limit for compact titles.
 
+## Screenshots
+
+### Main View
+
+<img src="screenshots/Main.png" alt="NextUp main view" width="320" />
+
+### Empty State
+
+<img src="screenshots/NoEvents.png" alt="NextUp empty state" width="320" />
+
 ## Installation
 
 ### Option 1: Download a Release

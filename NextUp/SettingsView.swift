@@ -42,10 +42,14 @@ struct SettingsView: View {
                         .pickerStyle(.menu)
                         .onChange(of: menuBarDisplayMode) {
                             EventManager.shared.updateMenuBarTitle()
+                            EventManager.shared.refreshFromSettings()
                         }
 
                         Toggle("Show icon with text", isOn: $showMenuBarIcon)
                             .disabled(menuBarDisplayMode == .none)
+                            .onChange(of: showMenuBarIcon) {
+                                EventManager.shared.refreshFromSettings()
+                            }
 
                         Text(
                             menuBarDisplayMode == .none

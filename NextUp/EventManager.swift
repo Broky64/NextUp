@@ -26,12 +26,25 @@ class EventManager: ObservableObject {
     private var lastProcessedMinute: Date?
     
     private init() {
+        refreshEnabled = shouldRefreshInBackground()
         requestAccess()
     }
     
     func setRefreshEnabled(_ enabled: Bool) {
         refreshEnabled = enabled
         refreshTimerIfNeeded()
+    }
+    
+    func refreshFromSettings() {
+        setRefreshEnabled(shouldRefreshInBackground())
+    }
+    
+    private func shouldRefreshInBackground() -> Bool {
+        let defaults = UserDefaults.standard
+        let showMenuBarIcon = defaults.object(forKey: "showMenuBarIcon") as? Bool ?? true
+        let rawMode = defaults.string(forKey: "menuBarDisplayMode") ?? MenuBarMode.currentEvent.rawValue
+        let mode = MenuBarMode(rawValue: rawMode) ?? .currentEvent
+        return showMenuBarIcon || mode != .none
     }
     
     private func startTimer() {
@@ -111,9 +124,9 @@ class EventManager: ObservableObject {
                         self?.handleAccessUpdate(granted: granted)
                     }
                 }
-            case .authorized:
+            case .authorized, .fullAccess:
                 handleAccessUpdate(granted: true)
-            case .restricted, .denied:
+            case .writeOnly, .restricted, .denied:
                 handleAccessUpdate(granted: false)
             @unknown default:
                 handleAccessUpdate(granted: false)

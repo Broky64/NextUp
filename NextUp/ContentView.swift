@@ -1,5 +1,6 @@
 import SwiftUI
 import EventKit
+import Combine
 
 struct EventGroup: Identifiable {
     let id = UUID()
@@ -195,16 +196,16 @@ struct EventRowView: View {
         }
     }
     
+    private func roundedMinutes(from startDate: Date, to endDate: Date) -> Int {
+        let calendar = Calendar.current
+        let seconds = calendar.dateComponents([.second], from: startDate, to: endDate).second ?? 0
+        return max(0, Int((Double(seconds) / 60.0).rounded()))
+    }
+    
     var body: some View {
         let now = currentMinute
         let isPast = !event.isAllDay && event.endDate < now
         let isActive = !event.isAllDay && event.startDate <= now && event.endDate > now
-        
-        func roundedMinutes(from startDate: Date, to endDate: Date) -> Int {
-            let calendar = Calendar.current
-            let seconds = calendar.dateComponents([.second], from: startDate, to: endDate).second ?? 0
-            return max(0, Int((Double(seconds) / 60.0).rounded()))
-        }
         
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 1.5)

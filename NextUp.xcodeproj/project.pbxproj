@@ -280,7 +280,7 @@
 				INFOPLIST_FILE = NextUp/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "NextUp requires full access to your calendar to display the next event.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "NextUp needs access to your calendar to display upcoming events and countdowns in the menu bar.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "NextUp requires access to your calendar to display the next event.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -325,7 +325,7 @@
 				INFOPLIST_FILE = NextUp/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "NextUp requires full access to your calendar to display the next event.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "NextUp needs access to your calendar to display upcoming events and countdowns in the menu bar.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "NextUp requires access to your calendar to display the next event.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (

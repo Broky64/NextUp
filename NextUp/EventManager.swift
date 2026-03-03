@@ -1,6 +1,7 @@
 import Foundation
 import EventKit
 import Combine
+import AppKit
 
 enum MenuBarMode: String, CaseIterable {
     case none
@@ -18,58 +19,144 @@ class EventManager: ObservableObject {
     @Published var menuBarTitle: String = ""
     @Published var currentMinute: Date = Date()
     
+    private let calendar = Calendar.current
     private var timerCancellable: AnyCancellable?
+    private var alignmentCancellable: AnyCancellable?
+    private var refreshEnabled = true
+    private var lastProcessedMinute: Date?
     
     private init() {
         requestAccess()
     }
     
-    func startTimer() {
+    func setRefreshEnabled(_ enabled: Bool) {
+        refreshEnabled = enabled
+        refreshTimerIfNeeded()
+    }
+    
+    private func startTimer() {
         timerCancellable?.cancel()
         timerCancellable = Timer.publish(every: 60, on: .main, in: .common)
             .autoconnect()
-            .sink { [weak self] _ in
-                self?.fetchEvents()
+            .sink { [weak self] date in
+                self?.handleMinuteTick(date)
             }
     }
     
+    private func alignToNextMinuteThenStartTimer() {
+        alignmentCancellable?.cancel()
+        
+        let now = Date()
+        let minuteStart = calendar.dateInterval(of: .minute, for: now)?.start ?? now
+        guard let nextMinute = calendar.date(byAdding: .minute, value: 1, to: minuteStart) else {
+            handleMinuteTick(now)
+            startTimer()
+            return
+        }
+        
+        let initialDelay = max(0.0, nextMinute.timeIntervalSince(now))
+        guard initialDelay > 0.01 else {
+            handleMinuteTick(nextMinute)
+            startTimer()
+            return
+        }
+        
+        alignmentCancellable = Timer.publish(every: initialDelay, on: .main, in: .common)
+            .autoconnect()
+            .prefix(1)
+            .sink { [weak self] date in
+                self?.handleMinuteTick(date)
+                self?.startTimer()
+            }
+    }
+    
+    private func stopTimer() {
+        alignmentCancellable?.cancel()
+        alignmentCancellable = nil
+        timerCancellable?.cancel()
+        timerCancellable = nil
+    }
+    
+    private func refreshTimerIfNeeded() {
+        guard accessGranted, refreshEnabled else {
+            stopTimer()
+            return
+        }
+        alignToNextMinuteThenStartTimer()
+    }
+    
     func requestAccess() {
+        let status = EKEventStore.authorizationStatus(for: .event)
+        
         if #available(macOS 14.0, *) {
-            store.requestFullAccessToEvents { [weak self] granted, error in
-                DispatchQueue.main.async {
-                    self?.accessGranted = granted
-                    if granted { 
-                        self?.fetchEvents()
-                        self?.startTimer()
-                    } else {
-                        self?.upcomingEvents = []
-                        self?.currentMinute = Date()
-                        self?.updateMenuBarTitle()
+            switch status {
+            case .notDetermined:
+                store.requestFullAccessToEvents { [weak self] granted, _ in
+                    DispatchQueue.main.async {
+                        self?.handleAccessUpdate(granted: granted)
                     }
                 }
+            case .fullAccess, .authorized:
+                handleAccessUpdate(granted: true)
+            case .writeOnly, .restricted, .denied:
+                handleAccessUpdate(granted: false)
+            @unknown default:
+                handleAccessUpdate(granted: false)
             }
         } else {
-            store.requestAccess(to: .event) { [weak self] granted, error in
-                DispatchQueue.main.async {
-                    self?.accessGranted = granted
-                    if granted { 
-                        self?.fetchEvents()
-                        self?.startTimer()
-                    } else {
-                        self?.upcomingEvents = []
-                        self?.currentMinute = Date()
-                        self?.updateMenuBarTitle()
+            switch status {
+            case .notDetermined:
+                store.requestAccess(to: .event) { [weak self] granted, _ in
+                    DispatchQueue.main.async {
+                        self?.handleAccessUpdate(granted: granted)
                     }
                 }
+            case .authorized:
+                handleAccessUpdate(granted: true)
+            case .restricted, .denied:
+                handleAccessUpdate(granted: false)
+            @unknown default:
+                handleAccessUpdate(granted: false)
             }
         }
     }
     
-    func fetchEvents() {
+    private func handleAccessUpdate(granted: Bool) {
+        accessGranted = granted
+        
+        if granted {
+            lastProcessedMinute = nil
+            fetchTodaysEvents(referenceDate: Date())
+            refreshTimerIfNeeded()
+            return
+        }
+        
+        stopTimer()
+        upcomingEvents = []
+        currentMinute = Date()
+        updateMenuBarTitle()
+    }
+    
+    func openSystemSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendar") else {
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+    
+    func handleMinuteTick(_ date: Date = Date()) {
+        let minuteStart = calendar.dateInterval(of: .minute, for: date)?.start ?? date
+        guard minuteStart != lastProcessedMinute else { return }
+        lastProcessedMinute = minuteStart
+        fetchTodaysEvents(referenceDate: minuteStart)
+    }
+    
+    func fetchTodaysEvents(referenceDate: Date = Date()) {
         guard accessGranted else { return }
+
+        // EventKit access is local to the system calendar database (no network call here).
         let calendars = store.calendars(for: .event)
-        let now = Date()
-        let calendar = Calendar.current
+        let now = referenceDate
         
         let startOfDay = calendar.startOfDay(for: now)
         let savedDays = UserDefaults.standard.integer(forKey: "daysInAdvance")
@@ -85,9 +172,13 @@ class EventManager: ObservableObject {
                 if !$0.isAllDay && $1.isAllDay { return false }
                 return $0.startDate < $1.startDate
             }
-            self.currentMinute = Date()
-            self.updateMenuBarTitle(now: self.currentMinute)
+            self.currentMinute = now
+            self.updateMenuBarTitle(now: now)
         }
+    }
+    
+    func fetchEvents() {
+        fetchTodaysEvents(referenceDate: Date())
     }
     
     func updateMenuBarTitle(now: Date = Date()) {
@@ -95,12 +186,17 @@ class EventManager: ObservableObject {
         let mode = MenuBarMode(rawValue: savedModeString) ?? .currentEvent
         
         guard mode != .none else {
-            menuBarTitle = ""
+            if menuBarTitle != "" {
+                menuBarTitle = ""
+            }
             return
         }
 
         guard accessGranted else {
-            menuBarTitle = "Grant Access"
+            let deniedTitle = "Grant Access"
+            if menuBarTitle != deniedTitle {
+                menuBarTitle = deniedTitle
+            }
             return
         }
         
@@ -114,41 +210,52 @@ class EventManager: ObservableObject {
             let remainder = mins % 60
             return hours > 0 ? "\(hours)h \(remainder)m" : "\(mins)m"
         }
+        
+        func roundedMinutes(from startDate: Date, to endDate: Date) -> Int {
+            let seconds = calendar.dateComponents([.second], from: startDate, to: endDate).second ?? 0
+            return max(0, Int((Double(seconds) / 60.0).rounded()))
+        }
 
         let activeEvent = upcomingEvents.first { !$0.isAllDay && $0.startDate <= now && $0.endDate > now }
         let nextEvent = upcomingEvents.first { !$0.isAllDay && $0.startDate > now }
 
         func activeText(for event: EKEvent) -> String {
-            let mins = max(0, Int(event.endDate.timeIntervalSince(now) / 60))
+            let mins = roundedMinutes(from: now, to: event.endDate)
             return "\(formatTitle(event.title)) \(formatTime(mins)) left"
         }
 
         func nextText(for event: EKEvent) -> String {
-            let mins = max(0, Int(event.startDate.timeIntervalSince(now) / 60))
+            let mins = roundedMinutes(from: now, to: event.startDate)
             return "\(formatTitle(event.title)) in \(formatTime(mins))"
         }
+        
+        var nextTitle = ""
 
         switch mode {
         case .none:
-            menuBarTitle = ""
+            nextTitle = ""
         case .currentEvent:
             if let activeEvent {
-                menuBarTitle = activeText(for: activeEvent)
+                nextTitle = activeText(for: activeEvent)
             } else if let nextEvent {
                 // Fallback keeps title dynamic even when nothing is currently running.
-                menuBarTitle = nextText(for: nextEvent)
+                nextTitle = nextText(for: nextEvent)
             } else {
-                menuBarTitle = ""
+                nextTitle = ""
             }
         case .upcomingEvent:
             if let nextEvent {
-                menuBarTitle = nextText(for: nextEvent)
+                nextTitle = nextText(for: nextEvent)
             } else if let activeEvent {
                 // Fallback avoids showing only the icon when no future event exists.
-                menuBarTitle = activeText(for: activeEvent)
+                nextTitle = activeText(for: activeEvent)
             } else {
-                menuBarTitle = ""
+                nextTitle = ""
             }
+        }
+        
+        if menuBarTitle != nextTitle {
+            menuBarTitle = nextTitle
         }
     }
 }

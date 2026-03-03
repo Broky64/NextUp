@@ -137,7 +137,7 @@ struct SettingsView: View {
                 Label("Appearance", systemImage: "slider.horizontal.3")
             }
         }
-        .frame(width: 460, height: 420)
+        .frame(width: 460, height: 320)
     }
 
     @ViewBuilder

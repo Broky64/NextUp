@@ -10,6 +10,7 @@ struct EventGroup: Identifiable {
 struct ContentView: View {
     @ObservedObject var eventManager: EventManager
     @Environment(\.openSettings) private var openSettings
+    private let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     
     @AppStorage("showAllDayEvents") private var showAllDayEvents = true
     @AppStorage("showPastEvents") private var showPastEvents = true
@@ -59,10 +60,9 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             if !eventManager.accessGranted {
-                Text("Calendar access required.")
-                    .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .rounded))
-                    .foregroundColor(.secondary)
-                    .padding(.vertical, 32)
+                AccessDeniedView(fontSizeOffset: fontSizeOffset) {
+                    eventManager.openSystemSettings()
+                }
             } else if groupedEvents.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "calendar")
@@ -139,6 +139,41 @@ struct ContentView: View {
             .padding(.bottom, 2)
         }
         .frame(width: 300)
+        .onReceive(timer) { date in
+            eventManager.handleMinuteTick(date)
+        }
+    }
+}
+
+struct AccessDeniedView: View {
+    let fontSizeOffset: Double
+    let openSystemSettings: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "exclamationmark.lock.fill")
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundColor(.secondary)
+            
+            Text("Calendar Access Required")
+                .font(.system(size: 13 + fontSizeOffset, weight: .semibold, design: .rounded))
+                .foregroundColor(.primary)
+            
+            Text("NextUp needs permission to show your events. Please enable Calendar access in System Settings > Privacy & Security.")
+                .font(.system(size: 11 + fontSizeOffset, weight: .medium, design: .rounded))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+            
+            Button("Open System Settings", action: openSystemSettings)
+                .font(.system(size: 12 + fontSizeOffset, weight: .semibold, design: .rounded))
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 24)
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -165,6 +200,12 @@ struct EventRowView: View {
         let isPast = !event.isAllDay && event.endDate < now
         let isActive = !event.isAllDay && event.startDate <= now && event.endDate > now
         
+        func roundedMinutes(from startDate: Date, to endDate: Date) -> Int {
+            let calendar = Calendar.current
+            let seconds = calendar.dateComponents([.second], from: startDate, to: endDate).second ?? 0
+            return max(0, Int((Double(seconds) / 60.0).rounded()))
+        }
+        
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 1.5)
                 .fill(Color(nsColor: event.calendar.color))
@@ -177,7 +218,7 @@ struct EventRowView: View {
                     .foregroundColor(isPast ? .secondary.opacity(0.6) : .secondary)
                     .frame(width: 90, alignment: .leading)
             } else if isActive {
-                let diff = max(0, Int(event.endDate.timeIntervalSince(now) / 60))
+                let diff = roundedMinutes(from: now, to: event.endDate)
                 let h = diff / 60
                 let m = diff % 60
                 let timeValue = h > 0 ? "\(h)h \(m)m" : "\(m) min"

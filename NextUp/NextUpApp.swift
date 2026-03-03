@@ -5,6 +5,10 @@ struct NextUpApp: App {
     @StateObject private var eventManager = EventManager.shared
     @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
     @AppStorage("menuBarDisplayMode") private var menuBarDisplayMode: MenuBarMode = .currentEvent
+    
+    private var shouldRefreshInBackground: Bool {
+        showMenuBarIcon || menuBarDisplayMode != .none
+    }
 
     var body: some Scene {
         MenuBarExtra {
@@ -32,6 +36,15 @@ struct NextUpApp: App {
             .id("\(eventManager.menuBarTitle)|\(menuBarDisplayMode.rawValue)|\(showMenuBarIcon)")
         }
         .menuBarExtraStyle(.window)
+        .onAppear {
+            eventManager.setRefreshEnabled(shouldRefreshInBackground)
+        }
+        .onChange(of: showMenuBarIcon) { _, _ in
+            eventManager.setRefreshEnabled(shouldRefreshInBackground)
+        }
+        .onChange(of: menuBarDisplayMode) { _, _ in
+            eventManager.setRefreshEnabled(shouldRefreshInBackground)
+        }
         
         Settings {
             SettingsView()

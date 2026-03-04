@@ -97,7 +97,7 @@ struct ContentView: View {
                                 Text(group.title)
                                     .font(.system(size: 9 + fontSizeOffset, weight: .bold, design: .rounded))
                                     .foregroundColor(.secondary)
-                                    .padding(.horizontal, 12)
+                                    .padding(.horizontal, 8)
                                     .padding(.top, 2)
                                 
                                 ForEach(group.events, id: \.calendarItemIdentifier) { event in
@@ -305,7 +305,7 @@ struct EventRowView: View {
                     Text("All Day")
                         .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .monospaced))
                         .foregroundColor(isPast ? .secondary.opacity(0.6) : .secondary)
-                        .frame(width: 90, alignment: .leading)
+                        .frame(width: 82, alignment: .leading)
                 } else if isActive {
                     let diff = roundedMinutes(from: now, to: event.endDate)
                     let h = diff / 60
@@ -318,12 +318,12 @@ struct EventRowView: View {
                      Text(" left")
                         .font(.system(size: 11 + fontSizeOffset, weight: .bold, design: .monospaced))
                         .foregroundColor(activeColor))
-                        .frame(width: 90, alignment: .leading)
+                        .frame(width: 82, alignment: .leading)
                 } else {
                     Text(event.startDate, style: .time)
                         .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .monospaced))
                         .foregroundColor(isPast ? .secondary.opacity(0.6) : .secondary)
-                        .frame(width: 90, alignment: .leading)
+                        .frame(width: 82, alignment: .leading)
                 }
                 
                 Text("·")
@@ -334,18 +334,19 @@ struct EventRowView: View {
                     .font(.system(size: 12 + fontSizeOffset, weight: .medium, design: .rounded))
                     .foregroundColor(isPast ? .secondary.opacity(0.6) : .primary)
                     .lineLimit(1)
-                    
-                Spacer()
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
         .frame(height: 22)
-        .padding(.horizontal, 8)
+        .padding(.leading, 8)
+        .padding(.trailing, 2)
         .padding(.vertical, 2)
         .background(isHovering ? Color.primary.opacity(0.08) : Color.clear)
         .cornerRadius(4)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 2)
         .onHover { hovering in
             isHovering = hovering
         }

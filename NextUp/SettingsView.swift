@@ -20,14 +20,10 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.menuBarDisplayMode) private var menuBarDisplayMode: MenuBarMode = .currentEvent
     @AppStorage(SettingsKeys.menuBarCharacterLimit) private var characterLimit: Int = 20
     @AppStorage(SettingsKeys.daysInAdvance) private var daysInAdvance: Int = 3
+    @AppStorage(SettingsKeys.fontSizeOffset) private var popoverFontSizeOffset: Double = 0.0
 
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var selectedTab: SettingsTab = .general
-
-    private var previewTitle: String {
-        let sample = "Quarterly roadmap review with product and engineering stakeholders"
-        return eventManager.truncateTitle(sample, limit: characterLimit)
-    }
 
     private var groupedCalendars: [(source: String, calendars: [EKCalendar])] {
         let grouped = Dictionary(grouping: eventManager.availableCalendars) { calendar in
@@ -207,26 +203,96 @@ struct SettingsView: View {
             }
 
             Section {
-                HStack(spacing: 6) {
-                    Image(systemName: "calendar.badge.clock")
+                HStack {
+                    Text("Popover Text Size")
+                    Spacer()
+                    Text("\(popoverFontSizeOffset >= 0 ? "+" : "")\(Int(popoverFontSizeOffset))")
+                        .monospacedDigit()
                         .foregroundStyle(.secondary)
-                    Text(previewTitle.isEmpty ? " " : previewTitle)
-                        .fontWeight(.medium)
-                        .lineLimit(1)
+
+                    Slider(
+                        value: $popoverFontSizeOffset,
+                        in: -2...8,
+                        step: 1
+                    )
+                    .frame(width: 150)
                 }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-                )
+            } header: {
+                Text("Popover")
+            } footer: {
+                Text("Changes the text size used in the event popover.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                popoverPreview
             } header: {
                 Text("Live Preview")
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var popoverPreview: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("TODAY")
+                .font(.system(size: 9 + popoverFontSizeOffset, weight: .bold, design: .rounded))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.top, 2)
+
+            previewRow(timeText: "23 min", timeSuffix: " left", title: "Team standup")
+            previewRow(timeText: "11:30", timeSuffix: nil, title: "Product sync with design")
+        }
+        .padding(.vertical, 4)
+        .frame(width: 300, alignment: .leading)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func previewRow(timeText: String, timeSuffix: String?, title: String) -> some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(Color.accentColor)
+                .frame(width: 3)
+                .padding(.vertical, 4)
+
+            if let timeSuffix {
+                (Text(timeText)
+                    .font(.system(size: 12 + popoverFontSizeOffset, weight: .bold, design: .monospaced))
+                    .foregroundColor(.primary) +
+                 Text(timeSuffix)
+                    .font(.system(size: 11 + popoverFontSizeOffset, weight: .bold, design: .monospaced))
+                    .foregroundColor(.orange))
+                .frame(width: 82, alignment: .leading)
+            } else {
+                Text(timeText)
+                    .font(.system(size: 12 + popoverFontSizeOffset, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .frame(width: 82, alignment: .leading)
+            }
+
+            Text("·")
+                .foregroundColor(.secondary.opacity(0.5))
+                .font(.system(size: 12 + popoverFontSizeOffset, weight: .bold))
+
+            Text(title)
+                .font(.system(size: 12 + popoverFontSizeOffset, weight: .medium, design: .rounded))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(height: 22)
+        .padding(.leading, 8)
+        .padding(.trailing, 2)
+        .padding(.vertical, 2)
     }
 
     // MARK: - Calendars Tab

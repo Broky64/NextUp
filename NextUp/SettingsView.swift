@@ -68,17 +68,7 @@ struct SettingsView: View {
                 .tag(SettingsTab.calendars)
 
             aboutTab
-                .tabItem {
-                    Label {
-                        Text("About")
-                    } icon: {
-                        Image("AboutAppIcon")
-                            .renderingMode(.original)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 16, height: 16)
-                    }
-                }
+                .tabItem { Label("About", systemImage: "info.circle") }
                 .tag(SettingsTab.about)
         }
         .frame(width: 480, height: 450)

@@ -3,20 +3,47 @@ name: Publish Release
 on:
   push:
     tags:
-      - 'v*' # S'exécute UNIQUEMENT quand tu crées un tag commençant par "v" (ex: v1.0.0)
+      - "v*"
+
+permissions:
+  contents: write
 
 jobs:
   release:
     name: Build and Publish Release
     runs-on: macos-latest
-    permissions:
-      contents: write # Autorisation indispensable pour que GitHub Actions puisse créer la page de Release
 
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Build App
+      - name: Extract tag and version
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+
+          if [ -z "$VERSION" ] || [ "$VERSION" = "$TAG" ]; then
+            echo "Invalid tag format: $TAG"
+            echo "Expected a tag like v1.0.2"
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Inject version with agvtool
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          xcrun agvtool new-marketing-version "$VERSION"
+          if ! xcrun agvtool new-version -all "$VERSION"; then
+            echo "agvtool rejected build version '$VERSION'. Falling back to GitHub run number."
+            xcrun agvtool new-version -all "${GITHUB_RUN_NUMBER}"
+          fi
+
+      - name: Build app
         run: |
           xcodebuild \
             -project NextUp.xcodeproj \
@@ -25,13 +52,64 @@ jobs:
             -derivedDataPath build \
             clean build
 
-      - name: Package App
+      - name: Package DMG
+        id: package
         run: |
-          cd build/Build/Products/Release/
-          zip -ry NextUp.zip NextUp.app
+          APP_PATH="build/Build/Products/Release/NextUp.app"
+          DMG_PATH="build/Build/Products/Release/NextUp-${{ steps.version.outputs.tag }}.dmg"
 
-      - name: Create GitHub Release
+          if [ ! -d "$APP_PATH" ]; then
+            echo "App bundle not found at $APP_PATH"
+            exit 1
+          fi
+
+          STAGING_DIR="$(mktemp -d)"
+          cp -R "$APP_PATH" "$STAGING_DIR/"
+
+          hdiutil create \
+            -volname "NextUp" \
+            -srcfolder "$STAGING_DIR" \
+            -ov \
+            -format UDZO \
+            "$DMG_PATH"
+
+          rm -rf "$STAGING_DIR"
+          echo "dmg_path=$DMG_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes from commit messages
+        id: notes
+        run: |
+          CURRENT_TAG="${{ steps.version.outputs.tag }}"
+          NOTES_FILE="release-notes.md"
+
+          if PREVIOUS_TAG=$(git describe --tags --abbrev=0 "${CURRENT_TAG}^" 2>/dev/null); then
+            {
+              echo "## Changes since ${PREVIOUS_TAG}"
+              echo
+              git log "${PREVIOUS_TAG}..${CURRENT_TAG}" --pretty=format:"- %s (%h)"
+            } > "$NOTES_FILE"
+          else
+            {
+              echo "## Changes"
+              echo
+              git log "${CURRENT_TAG}" --pretty=format:"- %s (%h)"
+            } > "$NOTES_FILE"
+          fi
+
+          if [ ! -s "$NOTES_FILE" ]; then
+            {
+              echo "## Changes"
+              echo
+              echo "- Initial release."
+            } > "$NOTES_FILE"
+          fi
+
+          echo "notes_file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/Build/Products/Release/NextUp.zip
-          generate_release_notes: true # GitHub va écrire tout seul ce qui a changé depuis la dernière version !
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          body_path: ${{ steps.notes.outputs.notes_file }}
+          files: ${{ steps.package.outputs.dmg_path }}

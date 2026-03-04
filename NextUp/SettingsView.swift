@@ -19,6 +19,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.showMenuBarIcon) private var showMenuBarIcon = true
     @AppStorage(SettingsKeys.menuBarDisplayMode) private var menuBarDisplayMode: MenuBarMode = .currentEvent
     @AppStorage(SettingsKeys.menuBarCharacterLimit) private var characterLimit: Int = 20
+    @AppStorage(SettingsKeys.daysInAdvance) private var daysInAdvance: Int = 3
 
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var selectedTab: SettingsTab = .general
@@ -141,6 +142,25 @@ struct SettingsView: View {
                     Text("Menu Bar")
                 } footer: {
                     Text("NextUp refreshes every minute to keep your schedule accurate without draining battery.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section {
+                    Picker("Look Ahead", selection: $daysInAdvance) {
+                        Text("1 day").tag(1)
+                        Text("2 days").tag(2)
+                        Text("3 days").tag(3)
+                        Text("7 days").tag(7)
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: daysInAdvance) { _ in
+                        eventManager.fetchEvents()
+                    }
+                } header: {
+                    Text("Events")
+                } footer: {
+                    Text("Choose how many days of upcoming events are shown in NextUp.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

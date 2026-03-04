@@ -24,6 +24,7 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
+          RELEASE_COUNT="$(git tag --list 'v*' | awk '/^v[0-9]+\\.[0-9]+\\.[0-9]+$/ {count++} END {print count+0}')"
 
           if [ -z "$VERSION" ] || [ "$VERSION" = "$TAG" ]; then
             echo "Invalid tag format: $TAG"
@@ -31,17 +32,21 @@ jobs:
             exit 1
           fi
 
+          if [ "$RELEASE_COUNT" -lt 1 ]; then
+            echo "Unable to compute release count from tags."
+            exit 1
+          fi
+
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build=$RELEASE_COUNT" >> "$GITHUB_OUTPUT"
 
       - name: Inject version with agvtool
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          BUILD="${{ steps.version.outputs.build }}"
           xcrun agvtool new-marketing-version "$VERSION"
-          if ! xcrun agvtool new-version -all "$VERSION"; then
-            echo "agvtool rejected build version '$VERSION'. Falling back to GitHub run number."
-            xcrun agvtool new-version -all "${GITHUB_RUN_NUMBER}"
-          fi
+          xcrun agvtool new-version -all "$BUILD"
 
       - name: Build app
         run: |

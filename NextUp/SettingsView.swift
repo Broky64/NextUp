@@ -43,10 +43,34 @@ struct SettingsView: View {
     }
 
     private var appVersionText: String {
-        let info = Bundle.main.infoDictionary
-        let version = info?["CFBundleShortVersionString"] as? String ?? "1.0.0"
-        let build = info?["CFBundleVersion"] as? String ?? "1"
-        return "Version \(version) (Build \(build))"
+        let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let resolvedVersion = version.flatMap { $0.isEmpty ? nil : $0 } ?? "Unknown"
+        let resolvedBuild = build.flatMap { $0.isEmpty ? nil : $0 } ?? "Unknown"
+
+        if let buildTimestampText = buildTimestampText {
+            return "Version \(resolvedVersion) (Build \(resolvedBuild), \(buildTimestampText))"
+        }
+
+        return "Version \(resolvedVersion) (Build \(resolvedBuild))"
+    }
+
+    private var buildTimestampText: String? {
+        guard let executableURL = Bundle.main.executableURL,
+              let attributes = try? FileManager.default.attributesOfItem(atPath: executableURL.path),
+              let buildDate = attributes[.modificationDate] as? Date else {
+            return nil
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+
+        return "built \(formatter.string(from: buildDate))"
     }
 
     /// Builds the full tabbed settings window content.
